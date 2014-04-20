@@ -4,6 +4,7 @@
 **/*.blg
 **/*.dvi
 **/*.toc
+**/*.pyg
 **/*.run.xml
 src/main.pdf
 **/*.sublime-*
