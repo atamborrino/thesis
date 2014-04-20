@@ -1,0 +1,9 @@
+**/*.log
+**/*.aux
+**/*.bbl
+**/*.blg
+**/*.dvi
+**/*.toc
+**/*.xml
+**/*.sublime-*
+src/main-blx.bib
