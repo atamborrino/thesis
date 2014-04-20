@@ -4,6 +4,7 @@
 **/*.blg
 **/*.dvi
 **/*.toc
-**/*.xml
+**/*.run.xml
+**/*.pdf
 **/*.sublime-*
-src/main-blx.bib
+src/*-blx.bib
