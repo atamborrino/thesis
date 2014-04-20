@@ -5,6 +5,6 @@
 **/*.dvi
 **/*.toc
 **/*.run.xml
-**/*.pdf
+src/main.pdf
 **/*.sublime-*
 src/*-blx.bib
