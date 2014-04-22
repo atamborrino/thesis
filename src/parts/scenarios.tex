@@ -32,3 +32,31 @@ viverra vitae, lorem. Morbi scelerisque sagittis enim. Donec non ante
 sed neque dictum consectetuer. Etiam bibendum odio quis est. Quisque
 mollis magna et odio. Nunc nulla. Suspendisse magna felis, tincidunt
 in, blandit non, tempus vel, orci.
+
+\begin{listing}[H]
+\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{scala}
+object Application extends Controller {
+
+  def index hello = Action {
+    // val (i, e) = Concurrent.joined[Array[Byte]]
+
+    val i = Iteratee.foreach[Array[Byte]] { c =>
+      val s = new String(c)
+      println(s.length)
+      println(s)
+    }
+
+    WS.url("http://127.0.0.1:9000/").get(_ => i)
+
+    Ok("ready")
+  }
+}
+\end{minted}
+\caption{Example of a listing.}
+\label{lst:example}
+\end{listing}
+
+Listing \ref{lst:example} contains an example of a listing.
+\\
+
+Hello again.
