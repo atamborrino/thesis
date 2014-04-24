@@ -22,7 +22,7 @@ can be processed by data consumers that can react to the change of data. An exam
 a pre-computed view on the data that is updated upon each event.
 \\
 
-The platform consists of three main parts: 
+The platform consists of three main parts (see Figure \ref{fig:main_archi}): 
 
 \begin{itemize}
   \item Data Integration, that must integrate several data sources in order to emit 
@@ -33,8 +33,13 @@ events (data changes) to the Journal.
   events, maintain derived pre-computed view of the data, and emit new stream of events.
 \end{itemize}
 
-SCHEMA
-\\
+\begin{figure}[h]
+  \begin{center}
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/main_archi.png}}
+    \caption{Global architecture}
+    \label{fig:main_archi}
+  \end{center}
+\end{figure}
 
 Such an evented architecture allows easy decoupling of the write part (Data Integration) and the read part (Stream Processing),
 but must be done with a lot of care concerning technical architecture.
@@ -44,8 +49,8 @@ parallelize a lot of operations. Moreover, it must ensure that the stream of eve
 processors (consumers), i.e if consumers process data slowly, producer must try to slow the push rate. It should also deal with possible
 failure of components and offer strong guarantees on these cases (like no message loss).
 
-In order to fulfill these requirements, an asynchronous non-blocking approach will be taken to develop the platform in order to
-minimize IO cost, decouple components, take advantage of parallelization and handle failure based on the 
+In order to fulfill those requirements, an asynchronous non-blocking approach will be taken to develop the platform in order to
+minimize IO cost, decouple components, take easily advantage of parallelization and handle failure based on the 
 Reactive Programming manifesto principles \cite{bib:reactiveManifesto}.
 
 

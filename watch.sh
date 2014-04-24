@@ -1,3 +1,3 @@
 #!/bin/sh
 cd src/
-latex-watcher -c latex,bibtex,latex,pdflatex -t main.tex -b main
+latex-watcher -c pdflatex,bibtex,pdflatex,pdflatex -t main.tex -b main
