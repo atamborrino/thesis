@@ -5,6 +5,7 @@
 **/*.dvi
 **/*.toc
 **/*.pyg
+**/*.lof
 **/*.run.xml
 src/main.pdf
 **/*.sublime-*
