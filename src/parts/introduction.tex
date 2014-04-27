@@ -1,10 +1,9 @@
 \chapter{Introduction}
 
-Data is now at the center of organizations. 
-Data is heterogeneous, meaning that there is an explosion of Data Sources that each exposes data in its own format 
-that be structured, semi-structured or non-structured.
-Data needs to be real-time, because organizations no longer want to wait a day to have reports and alerts on their business data.
-Data needs to be resilient and logged: all changes in the data should be stored and queryable for future system audits.
+Data is now at the center of organizations and is increasingly heterogeneous, meaning that there is an explosion of data sources 
+that each exposes data in its own format that can be structured, semi-structured or non-structured.
+Another major trend is that data processing needs to be real-time, because managers no longer want to wait a whole day 
+to have reports and alerts on their business data.
 \\
 
 To achieve these requirements, traditional monolithic Data Wharehouse software start to be out-dated. They often
@@ -14,10 +13,10 @@ for real-time subscriptions of new events happening on the data \footfullcite{bi
 \\
 
 The platform I present in this thesis is an event-oriented Data Integration and Stream Processing platform that allows data consumers
-to subscribe to data changes in real-time. The main shift from traditional data wharehouse software is that the whole
-system is organized around the notion of \textit{immutable event} (\textit{log}). Such a data system captures from Data Sources
-a historical record of immutable events. Each event represents the change (creation, update or deletion) made to the data at a particular time and 
-is always true. Based on the Event-Sourcing principle \footfullcite{bib:eventSourcing}, events are stored in a Journal that is an ordered sequence of 
+to subscribe to data changes in real-time. The main shift from traditional Data Wharehouse software is that the whole
+system is organized around the notion of \textit{immutable event}. Such a data system captures from various data sources
+a historical record of immutable events. Each event represents the change (creation, update or deletion) made to the data at a particular time. 
+Based on the Event-Sourcing principle \footfullcite{bib:eventSourcing}, events are stored in a Journal that is an ordered sequence of 
 events. Then, the stream of events coming from the Journal can be processed by data consumers that can react to the change of data. 
 An example of data consumer can be one that maintain a pre-computed view on the data that is updated upon each event, or one that push 
 notification to another service upon a certain kind of events (see Figure \ref{fig:main_archi} for the global architecture).
@@ -40,7 +39,7 @@ of the data, but also all its previous states. This allows two interesting prope
 First, it is possible to create queries on the past states of the data. This can be very useful for a various of use cases
 where one is interested in the data history, for example a financial audit.
 
-Second, storing all changes greatly improve the fault-tolerance of the system. As events are not deleted, it is always possible 
+Second, storing all the data changes greatly improves the fault-tolerance of the system. As events are not deleted, it is always possible 
 to come back in the past in the Journal, delete some delete events that were put by mistake, and replay the events after
 them to re-build the system in a right state. This is also referred as Human Fault-Tolerance \footfullcite{bib:human-ft}: in a mutable system,
 if an user accidentally delete a data entry, it is lost for ever. But in an immutable system, the deletion is just another
