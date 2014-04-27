@@ -15,12 +15,12 @@ for real-time subscriptions of new events happening on the data \footfullcite{bi
 
 The platform I present in this thesis is an event-oriented Data Integration and Stream Processing platform that allows data consumers
 to subscribe to data changes in real-time. The main shift from traditional data wharehouse software is that the whole
-system is organized around the notion of \textit{event} (\textit{log}). Data Sources emit events that represents the changes 
-of the data, not the current state of the data. Based on the Event-Sourcing principle \footfullcite{bib:eventSourcing}, events
-are stored in a Journal that is a sequence of immutable changes to the data. Then, the stream of events coming from the Journal 
-can be processed by data consumers that can react to the change of data. An example of data consumer can be one that maintain
-a pre-computed view on the data that is updated upon each event, or one that push notification to another service upon a certain
-kind of events (see Figure \ref{fig:main_archi} for the global architecture).
+system is organized around the notion of \textit{immutable event} (\textit{log}). Such a data system captures from Data Sources
+a historical record of immutable events. Each event represents the change (creation, update or deletion) made to the data at a particular time and 
+is always true. Based on the Event-Sourcing principle \footfullcite{bib:eventSourcing}, events are stored in a Journal that is an ordered sequence of 
+events. Then, the stream of events coming from the Journal can be processed by data consumers that can react to the change of data. 
+An example of data consumer can be one that maintain a pre-computed view on the data that is updated upon each event, or one that push 
+notification to another service upon a certain kind of events (see Figure \ref{fig:main_archi} for the global architecture).
 \\
 
 An example use case is when an organization uses different SaaS services for each of its teams. For instance, the sales
@@ -37,16 +37,29 @@ An advantage of Event Sourcing is that the whole history of the system is stored
 and are always append to the Journal (never deleted or modified). As a result, the system stores not only the current state
 of the data, but also all its previous states. This allows two interesting properties.
 
-First, Queries on data history:
+First, it is possible to create queries on the past states of the data. This can be very useful for a various of use cases
+where one is interested in the data history, for example a financial audit.
 
-Second, fault-tolerance and re-playability:
+Second, storing all changes greatly improve the fault-tolerance of the system. As events are not deleted, it is always possible 
+to come back in the past in the Journal, delete some delete events that were put by mistake, and replay the events after
+them to re-build the system in a right state. This is also referred as Human Fault-Tolerance \footfullcite{bib:human-ft}: in a mutable system,
+if an user accidentally delete a data entry, it is lost for ever. But in an immutable system, the deletion is just another
+event added to the journal. Therefore one just need to remove this deletion event, and recover the data entry. Figure \ref{fig:event-sourcing}
+illustrates the difference between a mutable system and a immutable event-sourced system.
 \\ 
+\begin{figure}[h]
+  \begin{center}
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/event-sourcing.png}}
+    \caption{Immutable datastore and the Event Sourcing principle}
+    \label{fig:event-sourcing}
+  \end{center}
+\end{figure}
 
-This approach is also known as CQRS \footfullcite{bib:cqrs}. The core principle of CQRS is to decouple the write part and read part
+This kind of architecture is also known as CQRS \footfullcite{bib:cqrs}. The core principle of CQRS is to decouple the write part and read part
 of a system. The write part (Data Integration) only need to push immutable events to the Journal in an append-only fashion, which
 is very efficient because there is no mutation of the data and no read-write contentions as in traditional databases.
 The read part is a set of denormalized pre-computed view that are optimized for low read latency (as the view are automatically re-computed
-when a new related event comes in). 
+when a new related event comes in).
 An obvious property that causes this architecture is eventual consistency: when a data producer has received the acknowledgment
 from the Journal, there is no guarantee that data consumers has already processed the event and updated the data view.
 
@@ -55,8 +68,6 @@ architecture where each component (data producer, journal, data consumers with d
 no shared-state. This comes with the possibility of using heterogeneous technologies because parts are decoupled and only needs
 to communicate via defined protocols.
 \\
-
-
 
 The platform consists of three main parts: 
 \begin{itemize}
@@ -85,7 +96,7 @@ failure of components and offer strong guarantees on these cases (like no messag
 In order to fulfill those requirements, an asynchronous non-blocking approach will be taken to develop the platform in order to
 minimize IO cost, decouple components to be able to distribute them easily, take easily advantage of parallelization and handle failure based on the 
 Reactive Programming manifesto principles \footfullcite{bib:reactiveManifesto}. The platform is developed using functional programming in
-the Scala programming language \footfullcite{bib:scala} in order to use function abstractions to better handle asynchronous and stream-oriented code.
+the Scala programming language \footfullcite{bib:scala} in order to use functional abstractions to better handle asynchronous and stream-oriented code.
 \\
 
 This report is divided into two main parts: the Data Integration part, and the Journal and Stream Processing part.
