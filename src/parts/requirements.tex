@@ -44,11 +44,11 @@ to define a tree a stream processors (see Figure \ref{fig:tree}), where the root
 \end{figure}
 
 A stream processor receives events coming from its parent node. Upon the receive of an event, it can do one or several of these
-actions (see Figure \ref{fig:processAndSideeffect}):
+actions (see Figure \ref{fig:streamprocessor}):
 \begin{itemize}
   \item Creation of a sub-stream: the stream processor can transform a received event to a stream (several events), creating a sub-stream
   inside the global stream. The sub-stream must be inserted in-place in the stream: the whole sub-stream should be
-  send in-order to the node's children before processing the next incoming event.
+  send in-order to the node's children before processing the next incoming event (see Figure \ref{fig:substream}).
   The user implementing this method, called \verb|process|, must ensure that the function is pure (without side-effect).
   The user must also be aware that the function may be call several times for an event (at-least-once process semantic).
   \item Side-effect with exactly-once semantics: The second action possible is to perform a side-effect upon each of the event
@@ -57,7 +57,23 @@ actions (see Figure \ref{fig:processAndSideeffect}):
   can define non-idempotent side-effects. Nevertheless, the user must ensure that the side-effect is atomic. 
 \end{itemize}
 
-Another important functional requirements for the \verb|process| and \verb|performSideEffect| methods is that they can ensure the
+\begin{figure}[h]
+  \begin{center} 
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/stream_processor.png}}
+    \caption{A stream processor}
+    \label{fig:streamprocessor}
+  \end{center}
+\end{figure}
+
+\begin{figure}[h]
+  \begin{center} 
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/substream.png}}
+    \caption{In-order insertion of a substream in a stream}
+    \label{fig:substream}
+  \end{center}
+\end{figure}
+
+Another important functional requirements for the processor is that the \verb|process| and \verb|performSideEffect| methods is that they can ensure the
 sequentiality of asynchronous non-blocking operations (for example, a side-effect or a process can be done via an asynchronous call to a 
 database, but despite the asynchronous nature of the call, the processor must wait that the asynchronous call has returned
 before processing the next event).
