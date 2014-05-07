@@ -20,7 +20,8 @@ The problem with most REST APIs is that they are not evented, i.e they are pulle
 One must sent an HTTP request to query new data each time they need to. There exists some techniques to stream data via HTTP 1.1 and the 
 Chunked Transfer Encoding, but the REST APIs that the platform needs to integrate does not exposes such stream interface. 
 Thus, the architecture of this part needs to provide a way to perform incremental pull from data sources, and then transform
-it in a push stream of events towards the Journal.
+it in a push stream of events towards the Journal. Moreover, the platform needs to make sure to insert the events in the same
+order that they happened in their originated data source.
 
 
 \subsection{Journal and Stream Processing}
@@ -48,7 +49,10 @@ actions (see Figure \ref{fig:streamprocessor}):
 \begin{itemize}
   \item Creation of a sub-stream: the stream processor can transform a received event to a stream (several events), creating a sub-stream
   inside the global stream. The sub-stream must be inserted in-place in the stream: the whole sub-stream should be
-  send in-order to the node's children before processing the next incoming event (see Figure \ref{fig:substream}).
+  send in-order to the node's children before processing the next incoming event. For example, in Figure \ref{fig:substream},
+  the processing of an input event 1 produces a sub-stream of out events 1-1, 1-2 and 1-3. Even if another input event 2
+  arrives, it should not be processed before the whole sub-stream 1-1, 1-2 and 1-3 has been produced and sent to the processor's 
+  children.
   The user implementing this method, called \verb|process|, must ensure that the function is pure (without side-effect).
   The user must also be aware that the function may be call several times for an event (at-least-once process semantic).
   \item Side-effect with exactly-once semantics: The second action possible is to perform a side-effect upon each of the event
@@ -68,7 +72,7 @@ actions (see Figure \ref{fig:streamprocessor}):
 \begin{figure}[h]
   \begin{center} 
     \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/substream.png}}
-    \caption{In-order insertion of a substream in a stream}
+    \caption{In-order insertion of a sub-stream in a stream}
     \label{fig:substream}
   \end{center}
 \end{figure}
@@ -76,6 +80,32 @@ actions (see Figure \ref{fig:streamprocessor}):
 Another important functional requirements for the processor is that the \verb|process| and \verb|performSideEffect| methods is that they can ensure the
 sequentiality of asynchronous non-blocking operations (for example, a side-effect or a process can be done via an asynchronous call to a 
 database, but despite the asynchronous nature of the call, the processor must wait that the asynchronous call has returned
-before processing the next event).
+before processing the next event). Even sub-stream production can be asynchronous, meaning that the production of a sub-stream
+can be a composition of asynchronous operations.
+
+
+\section{Non-functional requirements}
+
+\subsection{Data Integration}
+
+The Data Integration part must be able to scale up easily. Scale up means that the puller should automatically make the best
+use possible of all cores available on a machine in order to parallelize the various pulls. The different parts of the puller 
+should also be easily distributable in case of the load if too big for one machine to handle. 
+
+Moreover, the nature of the puller implies that it will spend the majority of its time doing IO to query different data sources.
+Those IOs can have various durations depending on the size of the data to pull, the latency and bandwidth of the sources, etc.
+We want to optimize the use of resource (CPU, RAM) despite the fact that the platform is very IO-oriented. The architecture and implementation part
+of the report will show how asynchronous non-blocking IO meets these expectations.
+
+Another non-functional requirement is to have clean and composable code source despite its asynchronous nature. Asynchronous
+code can indeed lead to a maintenance nightmare if the wrong abstractions are used. The architecture and implementation part will
+show that the use of functional programming solves these problems.
+
+\subsection{Journal and Stream Processing}
+
+** performance, back-pressure, ... **
+
+
+
 
 
