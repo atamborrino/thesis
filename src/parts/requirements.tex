@@ -13,8 +13,8 @@ will have a field name, address, ...).
 
 More specifically, the platform needs to integrate several data source that exposes REST API. Such API exposes information
 concerning business data such as new sales information, new financial information, new production information...
-Each time that a resource is modified in one of these data sources, the platform should detect this change, create from it
-the corresponding event and push it into the Journal.
+Each time that a resource is modified in one of these data sources, the platform should detect this change, apply some data cleaning/transformation, create an 
+event from it and push it into the Journal.
 
 The problem with most REST APIs is that they are not evented, i.e they are pulled-based and not pushed-based. 
 One must sent an HTTP request to query new data each time they need to. There exists some techniques to stream data via HTTP 1.1 and the 
@@ -92,20 +92,35 @@ The Data Integration part must be able to scale up easily. Scale up means that t
 use possible of all cores available on a machine in order to parallelize the various pulls. The different parts of the puller 
 should also be easily distributable in case of the load if too big for one machine to handle. 
 
+The puller should also be fault-tolerant, meaning that a failure and restart of the system should ensure that no event
+is duplicated or loss.
+
 Moreover, the nature of the puller implies that it will spend the majority of its time doing IO to query different data sources.
 Those IOs can have various durations depending on the size of the data to pull, the latency and bandwidth of the sources, etc.
 We want to optimize the use of resource (CPU, RAM) despite the fact that the platform is very IO-oriented. The architecture and implementation part
 of the report will show how asynchronous non-blocking IO meets these expectations.
 
+
 Another non-functional requirement is to have clean and composable code source despite its asynchronous nature. Asynchronous
-code can indeed lead to a maintenance nightmare if the wrong abstractions are used. The architecture and implementation part will
+code can indeed lead to maintenance nightmare if the wrong abstractions are used. The architecture and implementation part will
 show that the use of functional programming solves these problems.
 
 \subsection{Journal and Stream Processing}
 
-** performance, back-pressure, ... **
+The Journal and Stream Processing part requires complex non-functional requirements in order to optimize resource consumption and maximize performance.
 
+A common problem with stream processing is to manage the flow rate. A producer can indeed produce events at a rate that is superior than
+the processing rate of a consumer. This problem is ever more important when there is
+a tree of stream processors instead of a line. Indeed, the platform should handle the fact that even if sibling processors in the tree
+have different processing speeds, they do not block each other based on the slowest sibling. In other words, sibling processors should be
+totally decoupled so that when a new event is sent from a parent to its children, the parent does not have to wait that its slowest
+children has finished to process the event in order to send the next event to them. This problem should be handle while minimizing
+RAM consumption.
 
+Another requirement is no message loss or duplication even in case of a temporary failure of a processor. This means that a processor
+that had a transient failure must be able to \textit{replay} the stream from where it was before its crash.
 
+Stream processors should also be easily distributable in order to deal with event flows that are too big
+for one machine to handle.
 
 

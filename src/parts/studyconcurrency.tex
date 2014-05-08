@@ -1,0 +1,53 @@
+\chapter{Study of functional programming abstractions for concurrency and asynchronicity}
+
+The architecture of the platform is heavily based on functional programming concepts to handle concurrency and
+asynchronicity in an effective and composable way. The following section describes and compares these abstractions.
+
+
+\section{Monadic Futures}
+
+\subsection{The problems of blocking IO with threads}
+
+To handle concurrency and IO, traditional languages use native threads and blocking IO. A thread is a unit of execution that is has its own stack
+on the underlining OS, and concurrency is achieved by switching threads on the machine cores. For example, with the blocking IO model,
+a thread that is waiting for IO is preempted by the OS. Traditionally threads has a high resource cost, both fixed cost (their own stack), 
+high context switching cost and high creation time. In case of Web-oriented application, a new thread is generally spawn for each new client,
+and if the Web application needs to call several backend services (that is usually the case in modern Service Oriented Architecture), 
+this thread will be blocked, doing nothing but using stack space and causing context switching.
+Such a model has been proved to be inefficient for a large number of concurrent clients for Web applications that calls various backend services
+and/or perform stream-oriented connections as highlighted by James Roper \footfullcite{bib:asyncio}. This is ever more
+important when backend services can occasionally be slow / fail. In case of a blocking IO model, clients' threads that requests
+this failed service will wait for this service (before a timeout), causing a very high number of threads in the server. As James Roper
+stated, this high number of threads prevents the other requests (calling another non-failed service) to be performed efficiently,
+because the server spends a lots of its time doing context switching between blocked threads that are doing nothing. This is ever worst if
+you have a maximum number of threads allowed in the server (that is usually the case in cloud platforms): new clients can not connect at all
+to your server because there is no thread to allow to them.
+
+\subsection{The problems of asynchronous non-blocking IO with callbacks}
+In order to avoid the problems caused by blocking IO, one can use a non-blocking IO model: when a thread is doing an IO operation, it doesn't wait
+until the IO is finished but rather provide a mechanism to notify the caller when the IO is finished. Meanwhile, the thread can be used for other tasks, like
+serving other web clients. 
+
+The problem is that this kind of asynchronous non-blocking programming can easily lead to hard code maintenance if no proper abstraction are used. The common way
+of many languages to handle asynchronicity is to provide a callback mechanism (Javascript may be the language that uses them the most). A callback is
+
+
+\subsection{Using monadic futures for composable asynchronous non-blocking programming}
+
+
+
+TODO: compare to callback
+
+TODO: solve asynchronous + concurrency ! (PROBLEM: no state (increment a counter...))
+
+\section{Iteratees}
+
+
+
+\section{Actor model}
+
+\subsection{The problems of synchronization with threads}
+
+TODO: compare to locks...
+
+TODO: problem: no sequentiality of async op

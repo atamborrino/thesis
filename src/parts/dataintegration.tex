@@ -1,0 +1,6 @@
+\chapter{Architecture and implementation of the Data Integration part}
+
+As stated in the Requirements chapter, the Data Integration part must incrementally pull various REST APIs (data sources) in parallel. For each resource type in
+in each data source, it must create an event flow. This event flow run through several data cleaning and data transformation steps that can
+be asynchronous. Despite the asynchronous nature, it should ensure that the event flow remains in-order. In the end, event flows are pushed
+into the Journal.
