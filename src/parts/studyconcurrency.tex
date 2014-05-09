@@ -141,6 +141,9 @@ Behind the scene, futures are multiplexed into a thread pool named a ExecutionCo
 This allows to decouple the \textit{concurrency semantic} (which tasks should be run concurrently) from the \textit{concurrency implementation} (an ExecutionContext
 can for example limit the number of threads it can use, etc.). Twitter's engineer and researcher Marius Eriksen highlights this idea in his 
 "Your Server as a Function" paper \ref{bib:serverfunc} where he states that futures are a declarative data-oriented way of doing asynchronous programming.
+
+Moreover, as Marius Eriksen highlights in his article "Future aren't ersatz threads" \ref{bib:futurenotthreads}, Futures "model the real world truthfully": 
+a Future[T] can either result in a success with a value of type T, or with an error (Exception), which is inherently the case with IO operations.
 \\
 
 The term \textit{monadic} comes from Monads, a key abstraction in typed functional programming coming from the Haskell world. Thoroughly defining what a monad
@@ -161,15 +164,57 @@ trait Monad[F[_]] extends Functor[F] {
 \label{lst:monad}
 \end{listing}
 
-\verb|unit| allows to construct a monad that encapsulate a value of type A, \verb|map| allows to apply a function to the encapsulated value,
-and \verb|flatMap| allows to apply a function to the encapsulated value that returns itself a monad.
+\verb|unit| allows to construct a monad that encapsulate a value of type A (equivalent to \verb|future {}|), \verb|map| allows to apply a function to 
+the encapsulated value, and \verb|flatMap| allows to apply a function to the encapsulated value that returns itself a monad.
+\\
 
 A Future is a monadic type, meaning that it extends the monad trait and implement the \verb|unit| and \verb|flatMap| methods.
-These methods allows powerful compositions between different Futures instances. 
+These methods (and many more) allows powerful compositions between different Futures instances. 
 
-TODO: compare to callback
+For example, \verb|map| allows to transform the result of an asynchronous operation. \verb|flatMap| allows sequential and 
+parallel composition. Listing \ref{lst:futcompo} illustrates these composition.
 
-TODO: solve asynchronous + concurrency ! (PROBLEM: no state (increment a counter...))
+\begin{listing}[h]
+\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{scala}
+/*
+ * Sequential composition of asynchronous operations returning Integers
+ */
+val future1: Future[Int] = action1()
+val futureResult4: Future[String] = future1
+  .flatMap(result1 => action2(result1))
+  .flatMap(result2 => action3(result2))
+  .flatMap(result3 => action4(result3))
+  .map(result4 => "This is result4: " + result4)
+
+// one can also use Scala's monad comprehension that provides 
+// syntaxic sugar to monad operation:
+val futureResult4: Future[String] = for {
+  result1 <- action1()
+  result2 <- action2(result1)
+  result3 <- action3(result2)
+  result4 <- action4(result3)
+} yield "This is result4: " + result4
+
+/*
+ * Concurrent composition
+ */
+val future1: Future[Int] = action1()
+val future2: Future[Int] = action2()
+val future1And2: Future[(Int, Int)] = future1 zip future2
+
+\end{minted}
+\caption{Future composition in Scala}
+\label{lst:futcompo}
+\end{listing}
+
+We see in \ref{lst:futcompo} that we avoid the "pyramid of doom" effect for sequential composition, and that concurrent composition is very simple
+compared to callback-based programming. Moreover, monad operations allows automatic error propagation. In the sequential composition example,
+if for instance action2 failed, the action3 and action4 will not be executed, and futureResult4 will be a failed future with the Exception
+that action2 throwed. 
+
+In summary, Futures are a simple immutable abstraction that allows easy reasoning and composition about asynchronous programming.
+However, a Future only model the fact that \textit{one} value will be available in the future. Hence, it is not directly applicable
+to model \textit{asynchronous non-blocking streams}.
 
 \section{Iteratees}
 
