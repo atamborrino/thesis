@@ -6,6 +6,7 @@
 **/*.toc
 **/*.pyg
 **/*.lof
+**/*.lol
 **/*.run.xml
 src/main.pdf
 **/*.sublime-*

@@ -10,8 +10,8 @@ asynchronicity in an effective and composable way. The following section describ
 
 To handle concurrency and IO, traditional languages use native threads and blocking IO. A thread is a unit of execution that is has its own stack
 on the underlining OS, and concurrency is achieved by switching threads on the machine cores. For example, with the blocking IO model,
-a thread that is waiting for IO is preempted by the OS. Traditionally threads has a high resource cost, both fixed cost (their own stack), 
-high context switching cost and high creation time. In case of Web-oriented application, a new thread is generally spawn for each new client,
+a thread that is waiting for IO is preempted by the OS. Traditionally threads has a high resource cost, both fixed cost (the default stack size for a thread is 
+1 MB on a 64 bit JVM), high context switching cost and high creation time. In case of Web-oriented application, a new thread is generally spawn for each new client,
 and if the Web application needs to call several backend services (that is usually the case in modern Service Oriented Architecture), 
 this thread will be blocked, doing nothing but using stack space and causing context switching.
 Such a model has been proved to be inefficient for a large number of concurrent clients for Web applications that calls various backend services
@@ -21,20 +21,151 @@ this failed service will wait for this service (before a timeout), causing a ver
 stated, this high number of threads prevents the other requests (calling another non-failed service) to be performed efficiently,
 because the server spends a lots of its time doing context switching between blocked threads that are doing nothing. This is ever worst if
 you have a maximum number of threads allowed in the server (that is usually the case in cloud platforms): new clients can not connect at all
-to your server because there is no thread to allow to them.
+to your server because there is no thread to allow to them. Non-blocking IO servers are also known as evented servers.
+Mark McGranaghan highlights this in his article about Threaded vs Evented Servers \footfullcite{bib:threadevent}. If we define \verb|c| the CPU time
+that each request takes and \verb|w| the total time of the request including waiting time calling external services, an evented server
+performs way better than a threaded server when the ratio \verb|w/c| is high (so when most time of a request is spent waiting for
+external services).
 
 \subsection{The problems of asynchronous non-blocking IO with callbacks}
 In order to avoid the problems caused by blocking IO, one can use a non-blocking IO model: when a thread is doing an IO operation, it doesn't wait
 until the IO is finished but rather provide a mechanism to notify the caller when the IO is finished. Meanwhile, the thread can be used for other tasks, like
 serving other web clients. 
 
-The problem is that this kind of asynchronous non-blocking programming can easily lead to hard code maintenance if no proper abstraction are used. The common way
-of many languages to handle asynchronicity is to provide a callback mechanism (Javascript may be the language that uses them the most). A callback is
+The problem is that this kind of asynchronous non-blocking programming can easily lead to hard code maintenance if no proper abstraction is used. The common way
+of many languages to deal with asynchronicity is to provide a callback mechanism (Javascript may be the language that uses them the most). A callback is
+way to perform an asynchronous operation by providing a function as a parameter of the function that do the asynchronous operation. The parameter function
+will be \textit{call back} when the asynchronous operation is finished. An example of a GET HTTP request to a web service in Javascript is shown in Listing 
+\ref{lst:jscb}.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{javascript}
+performHttpGet("http://www.example.com", function(error, response) {
+  if (!error) {
+    console.log("Response status: " + response.status)
+  }
+});
+\end{minted}
+\caption{A callback in Javascript}
+\label{lst:jscb}
+\end{listing}
+
+Here \verb|function(error, response) {...}| is the user-defined function that is call back when the asynchronous GET request
+returned. We see that callbacks are only about side-effects: no value is returned by the \verb|performHttpGet| function.
+This causes a serious lack of composability, popularly known as "callback hell". Listing \ref{lst:jspd} shows how to perform several asynchronous operations
+sequentially.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{javascript}
+action1(function(error, response1) {
+  if (!error) {
+    action2(function(error, response2) {
+      if (!error) {
+        action3(function(error, response3) {
+          if (!error) {
+            action4(function(error, response4) {
+              // do a side-effect with response4       
+            });
+          }
+        });
+      }
+    });
+  }
+});
+\end{minted}
+\caption{The "pyramid of doom" in Javascript}
+\label{lst:jspd}
+\end{listing}
+
+Such call is called "pyramid of doom" because the code invariably shifts to the right, and the intermediate steps can not be reused to compose
+them later with other operations. 
+
+Moreover, doing concurrent operations with the callback model is not easy also. We want here to perform 2 asynchronous operations in parallel,
+and do something with the result (composed of the result of the 2 operations). Listing \ref{lst:jsparr} shows how to do such in standard Javascript.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{javascript}
+  var results = [];
+
+  function doSomethingWithResults(results) {
+    // final callback
+  }
+
+  action1(function(error, response) {
+      results.push(response);
+      if (results.length == 2) {
+        doSomethingWithResults(results)
+      }
+    }
+  });
+
+  action2(function(error, response) {
+    results.push(response);
+    if (results.length == 2) {
+      doSomethingWithResults(results)
+    }
+  });
+\end{minted}
+\caption{Performing two asynchronous operations concurrently in Javascript}
+\label{lst:jsparr}
+\end{listing}
+
+The fact that the callback model is based on a closures that performs side-effect prevents easy composability. What I mean by composabilty
+is the fact of defining independently various asynchronous operations, and then compose them (sequentially, in parallel) to obtain a composed result
+of these actions. Moreover, error handling must be done manually for each asynchronous operation. Monadic futures are an abstraction coming from
+functional programming that solves these problems.
 
 
-\subsection{Using monadic futures for composable asynchronous non-blocking programming}
+\subsection{Monadic futures for composable asynchronous non-blocking programming}
 
+A Future is a monadic abstraction that stands for a value that may be available in the future. Using Scala's notation, a future is a type that is 
+parametrized by the type of the value that will eventually be available. For example, \verb|Future[Int]| is a type that represents an eventual integer.
+With futures, asynchronous functions return a \verb|Future[ResponseType]| instead of taking a callback function as a parameter. Listing \ref{lst:futures}
+shows simple future creations.
 
+\begin{listing}[h]
+\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{scala}
+val futureResponse: Future[HttpResponse] = performHttpGet("http://www.example.com")
+val futureComputation: Future[Int] = future {
+  // do long computation
+}
+\end{minted}
+\caption{Futures in Scala}
+\label{lst:futures}
+\end{listing}
+
+We see in Listing \ref{lst:futures} that futures can be used for non-blocking IO, but also as an abstraction for concurrency. In the example, the main thread
+executing the code does not block on both methods. The "long computation" will be done in another thread as it is encapsulated by a \verb|future {}|.
+
+Behind the scene, futures are multiplexed into a thread pool named a ExecutionContext in Scala. ExecutionContexts can be passed to methods that returned a future.
+This allows to decouple the \textit{concurrency semantic} (which tasks should be run concurrently) from the \textit{concurrency implementation} (an ExecutionContext
+can for example limit the number of threads it can use, etc.). Twitter's engineer and researcher Marius Eriksen highlights this idea in his 
+"Your Server as a Function" paper \ref{bib:serverfunc} where he states that futures are a declarative data-oriented way of doing asynchronous programming.
+\\
+
+The term \textit{monadic} comes from Monads, a key abstraction in typed functional programming coming from the Haskell world. Thoroughly defining what a monad
+is out of the scope of this thesis, but in a few words a monad is a type that encapsulates another type in order to perform operations on it. Some operations
+are mandatory to define a monad. Listing \ref{lst:monad} define the trait in Scala to define a monad, coming from the book Functional Programming in Scala
+\footfullcite{bib:fpscala}. 
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{scala}
+trait Monad[F[_]] extends Functor[F] {
+  def unit[A](a: => A): F[A]
+  def flatMap[A,B](ma: F[A])(f: A => F[B]): F[B]
+
+  def map[A,B](ma: F[A])(f: A => B): F[B] = flatMap(ma)(a => unit(f(a)))
+}
+\end{minted}
+\caption{The Monad trait in Scala}
+\label{lst:monad}
+\end{listing}
+
+\verb|unit| allows to construct a monad that encapsulate a value of type A, \verb|map| allows to apply a function to the encapsulated value,
+and \verb|flatMap| allows to apply a function to the encapsulated value that returns itself a monad.
+
+A Future is a monadic type, meaning that it extends the monad trait and implement the \verb|unit| and \verb|flatMap| methods.
+These methods allows powerful compositions between different Futures instances. 
 
 TODO: compare to callback
 
