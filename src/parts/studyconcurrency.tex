@@ -39,7 +39,7 @@ will be \textit{call back} when the asynchronous operation is finished. An examp
 \ref{lst:jscb}.
 
 \begin{listing}[h]
-\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{javascript}
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{javascript}
 performHttpGet("http://www.example.com", function(error, response) {
   if (!error) {
     console.log("Response status: " + response.status)
@@ -56,7 +56,7 @@ This causes a serious lack of composability, popularly known as "callback hell".
 sequentially.
 
 \begin{listing}[h]
-\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{javascript}
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{javascript}
 action1(function(error, response1) {
   if (!error) {
     action2(function(error, response2) {
@@ -84,7 +84,7 @@ Moreover, doing concurrent operations with the callback model is not easy also. 
 and do something with the result (composed of the result of the 2 operations). Listing \ref{lst:jsparr} shows how to do such in standard Javascript.
 
 \begin{listing}[h]
-\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{javascript}
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{javascript}
   var results = [];
 
   function doSomethingWithResults(results) {
@@ -124,7 +124,7 @@ With futures, asynchronous functions return a \verb|Future[ResponseType]| instea
 shows simple future creations.
 
 \begin{listing}[h]
-\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{scala}
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
 val futureResponse: Future[HttpResponse] = performHttpGet("http://www.example.com")
 val futureComputation: Future[Int] = future {
   // do long computation
@@ -140,9 +140,9 @@ executing the code does not block on both methods. The "long computation" will b
 Behind the scene, futures are multiplexed into a thread pool named a ExecutionContext in Scala. ExecutionContexts can be passed to methods that returned a future.
 This allows to decouple the \textit{concurrency semantic} (which tasks should be run concurrently) from the \textit{concurrency implementation} (an ExecutionContext
 can for example limit the number of threads it can use, etc.). Twitter's engineer and researcher Marius Eriksen highlights this idea in his 
-"Your Server as a Function" paper \ref{bib:serverfunc} where he states that futures are a declarative data-oriented way of doing asynchronous programming.
+"Your Server as a Function" paper \footfullcite{bib:serverfunc} where he states that futures are a declarative data-oriented way of doing asynchronous programming.
 
-Moreover, as Marius Eriksen highlights in his article "Future aren't ersatz threads" \ref{bib:futurenotthreads}, Futures "model the real world truthfully": 
+Moreover, as Marius Eriksen highlights in his article "Future aren't ersatz threads" \footfullcite{bib:futurenotthreads}, Futures "model the real world truthfully": 
 a Future[T] can either result in a success with a value of type T, or with an error (Exception), which is inherently the case with IO operations.
 \\
 
@@ -152,7 +152,7 @@ are mandatory to define a monad. Listing \ref{lst:monad} define the trait in Sca
 \footfullcite{bib:fpscala}. 
 
 \begin{listing}[h]
-\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{scala}
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
 trait Monad[F[_]] extends Functor[F] {
   def unit[A](a: => A): F[A]
   def flatMap[A,B](ma: F[A])(f: A => F[B]): F[B]
@@ -169,31 +169,24 @@ the encapsulated value, and \verb|flatMap| allows to apply a function to the enc
 \\
 
 A Future is a monadic type, meaning that it extends the monad trait and implement the \verb|unit| and \verb|flatMap| methods.
-These methods (and many more) allows powerful compositions between different Futures instances. 
+These methods (and many more) allows powerful compositions between different Futures instances. A Future is also an immutable
+data structure with all the functional programming benefits related to it (safe sharing between threads, ease of reasoning with referentially transparent code, etc).
 
 For example, \verb|map| allows to transform the result of an asynchronous operation. \verb|flatMap| allows sequential and 
-parallel composition. Listing \ref{lst:futcompo} illustrates these composition.
+parallel composition. \textit{flat} comes from \textit{flatten} because flatMap can transform a Future[Future[T]] to a Future[T].
+Listing \ref{lst:futcompo} illustrates these composition.
 
 \begin{listing}[h]
-\begin{minted}[fontsize=\small, frame=lines, framesep=2mm]{scala}
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
 /*
  * Sequential composition of asynchronous operations returning Integers
  */
 val future1: Future[Int] = action1()
-val futureResult4: Future[String] = future1
-  .flatMap(result1 => action2(result1))
+val future2: Future[Int] = future1 flatMap (result1 => action2(result1))
+val future4: Future[String] = future2
   .flatMap(result2 => action3(result2))
   .flatMap(result3 => action4(result3))
   .map(result4 => "This is result4: " + result4)
-
-// one can also use Scala's monad comprehension that provides 
-// syntaxic sugar to monad operation:
-val futureResult4: Future[String] = for {
-  result1 <- action1()
-  result2 <- action2(result1)
-  result3 <- action3(result2)
-  result4 <- action4(result3)
-} yield "This is result4: " + result4
 
 /*
  * Concurrent composition
@@ -201,29 +194,173 @@ val futureResult4: Future[String] = for {
 val future1: Future[Int] = action1()
 val future2: Future[Int] = action2()
 val future1And2: Future[(Int, Int)] = future1 zip future2
-
+// "zip" is another monad-ish operation for composition 
 \end{minted}
 \caption{Future composition in Scala}
 \label{lst:futcompo}
 \end{listing}
 
-We see in \ref{lst:futcompo} that we avoid the "pyramid of doom" effect for sequential composition, and that concurrent composition is very simple
+We see in Listing \ref{lst:futcompo} that we avoid the "pyramid of doom" effect for sequential composition, and that concurrent composition is very simple
 compared to callback-based programming. Moreover, monad operations allows automatic error propagation. In the sequential composition example,
 if for instance action2 failed, the action3 and action4 will not be executed, and futureResult4 will be a failed future with the Exception
 that action2 throwed. 
+\\
 
-In summary, Futures are a simple immutable abstraction that allows easy reasoning and composition about asynchronous programming.
-However, a Future only model the fact that \textit{one} value will be available in the future. Hence, it is not directly applicable
-to model \textit{asynchronous non-blocking streams}.
+In summary, a monadic future is a immutable abstraction for concurrency and asynchronism that allows easy reasoning and composition.
+However, a future only model the fact that \textit{one} value will be available in the future. Hence, it is not directly applicable
+to model asynchronous non-blocking \textit{streams}.
+
 
 \section{Iteratees}
 
+To model streams that can be produced in an asynchronous non-blocking way, the Iteratee abstraction can be used. An iteratee is an immutable data structure
+that allows incremental, safe, non-blocking and composable stream processing. One key feature of Iteratee is \textit{back-pressure} that will be described later on.
+The Iteratee way of processing stream involves three abstractions: Enumerators, Enumeratees and Iteratees. The Iteratee library from Play Framework 
+\footfullcite{bib:playiteratees} is used for the examples.
+\\
 
+An Iteratee is a stream consumer and is represented by the type \verb|Iteratee[E, A]|. An iteratee receive chunks of type \verb|E| 
+in order to produce a result of type \verb|A|. The main method of an iteratee is a fold method that passes around its current state and the
+next chunk to process.
+Listing \ref{lst:iterateecount} shows how to define an iteratee that sums the number of characters it receives.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+val chunkCounter: Iteratee[String, Int] = Iteratee.fold { (chunk, nbBytesReceived) =>
+  nbBytesReceived + chunk.length
+}
+\end{minted}
+\caption{A counter Iteratee}
+\label{lst:iterateecount}
+\end{listing}
+
+An Enumerator is a stream producer of type \verb|Enumerator[E]|. Listing \ref{lst:enumerators} shows how to create an enumerator that streams a collection.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+val producer: Enumerator[String] = Enumerator.enumerate(List("foo", "bar", "foobar"))
+\end{minted}
+\caption{A simple enumerator}
+\label{lst:enumerators}
+\end{listing}
+
+An Enumeratee is a stream transformer of type \verb|Enumeratee[E, F]| transforming chunks of type E to chunks of type F.
+Listing \ref{lst:enumeratees} shows several enumeratee examples.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+val filter = Enumeratee.filter[String](chunk => chunk != "bar")
+val mapper = Enumeratee.map[String](chunk => chunk + "!")
+\end{minted}
+\caption{Simple enumeratees}
+\label{lst:enumeratees}
+\end{listing}
+
+An interesting properties of Iteratees/Enumerators/Enumeratees is that they can be easily composed. Listing \ref{lst:iterateecompo}) shows how to
+run the data flow. As all is asynchronous, a Future of the result is returned. 
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+// An composed enumeratee that will perform filter and map to the stream
+val filterAndMapper: Enumeratee[String, String] =  filter compose mapper
+
+// A composed enumerator which produces chunk that will be filtered and mapped
+val modifiedProducer: Enumerator[String] = producer through filterAndMapper
+
+// Please note that all the operations were lazy for now.
+// Now we run the enumerator into the iteratee in order to process the flow
+val futureResult: Future[Int] = modifiedProducer run chunkCounter
+// the future result will be "foo!".length + "foobar!".length == 11
+\end{minted}
+\caption{Stream composition}
+\label{lst:iterateecompo}
+\end{listing}
+
+During the stream processing, either the Enumerator can choose to end the stream (sending an EOF) or the Iteratee can choose that it has processed enough
+chunk to compute its final value and stop the stream processing by returning a Done state to the Enumerator.
+\\
+
+A very interesting feature is when we have to compose asynchronous operations in order. Iteratees allows to define
+producer, transformer and consumer that return Futures of their operations. Moreover, Play Framework's Iteratee library
+provides helpers that allows for example to fetch an HTTP stream in a non-blocking way through an Enumerator.
+Listing \ref{lst:asynciteratee} shows how to get a Http stream (for example a stream of tweets), call an external web service to process
+the chunks, and insert the processed chunks in a database with the position of this chunk in the stream. 
+The Iteratee design ensures that chunks will be process in the order of the producer, even with asynchronous
+operations during the processing flow.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+val asyncProducer: Enumeratee[String] = getHttpStream("http://example.com/stream")
+
+val asyncTransformer: Enumeratee[String] = Enumeratee.mapM { Chunk => 
+  val futureProcessedChunk: Future[String] = callWebService(Chunk)
+  futureProcessedChunk
+}
+
+val asyncDatabaseSink = Iteratee.foldM[String, Int](0) { (processedChunk, n) =>
+  val futureInserted = database.insert((processedChunk, n))
+  futureInserted map (_ => n + 1)
+}
+
+// Starting the processing
+asyncProducer through asyncTransformer run asyncDatabaseSink
+\end{minted}
+\caption{Asynchronous non-blocking stream processing}
+\label{lst:asynciteratee}
+\end{listing}
+
+In the example of Listing \ref{lst:asynciteratee}, chunks are guaranteed to be in-order when they are inserted in the database. The \verb|M| after
+the \verb|map| and \verb|fold| methods stands for Monad, that is in our case a Future.
+
+Under the hood, an Enumerator is a kind of fold method that push chunks in a Iteratee. An Iterate can be in \verb|Cont| state meaning that it wants to consume more 
+chunks from an enumerator, in \verb|Done| state
+meaning that it does not want more input to compute its result value, or in \verb|Error| state. For each chunk, the Iteratee returns to the Enumerator
+a Future of its state. When this future is redeemed, it means that the Iteratee has finished processing the current chunk, so the enumerator can 
+push the next chunk into it (which can be also done by returning a Future of the chunk). 
+
+Thus we have asynchronous production and consumption with the consumer that "tells" (via its future state) to the producer that it is ready to 
+consume more chunks (or not). This mechanism in known as \verb|back-pressure| and allows the consumer to slow down the producer rate depending on its 
+own processing speed. 
+
+With back-pressure, we can differentiate two kinds of producers: \textit{cold} sources and \textit{hot} sources. Cold sources are sources that
+produces chunks from a static durable collection, meaning that the consumer can process the stream at his own speed without the risk of losing events.
+On the contrary, \textit{hot} sources are for example events coming from a network connection. If the consumer is not ready to consume the next chunk,
+a choice has to be done (drop the event, buffer it, ...). These problems will be dealt with more specifically further in the report.
+\\
+
+Futures and Iteratees compositions allows to model the asynchronous processing of both a single value and a stream of value, but 
+they are not abstractions to built your entire program on (they are parts of your program).
+The Actor model is an abstraction to model your entire application to easily handle concurrency, distribution and fault-tolerance, and can use Futures and Iteratees.
 
 \section{Actor model}
 
+First of all, it should be noted the Actor model is not a purely functional model as it use some side-effects. It is generally said that it sits between functional and
+imperative. Nevertheless, we will study it in this part as it integrates very well with functional code and is part of Scala's way of handling concurrency.
+The examples use the Akka framework \footfullcite{bib:akka} that provides actor systems for the JVM in Scala.
+
 \subsection{The problems of synchronization with threads}
+
+
+
+
+
+
+
+
+
 
 TODO: compare to locks...
 
 TODO: problem: no sequentiality of async op
+
+
+
+
+
+
+
+
+
+
+
+
