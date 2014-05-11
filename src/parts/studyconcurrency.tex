@@ -252,7 +252,7 @@ Listing \ref{lst:enumeratees} shows several enumeratee examples.
 val filter = Enumeratee.filter[String](chunk => chunk != "bar")
 val mapper = Enumeratee.map[String](chunk => chunk + "!")
 \end{minted}
-\caption{Simple enumeratees}
+\caption{Map and filter enumeratees}
 \label{lst:enumeratees}
 \end{listing}
 
@@ -316,7 +316,15 @@ Under the hood, an Enumerator is a kind of fold method that push chunks in a Ite
 chunks from an enumerator, in \verb|Done| state
 meaning that it does not want more input to compute its result value, or in \verb|Error| state. For each chunk, the Iteratee returns to the Enumerator
 a Future of its state. When this future is redeemed, it means that the Iteratee has finished processing the current chunk, so the enumerator can 
-push the next chunk into it (which can be also done by returning a Future of the chunk). 
+push the next chunk into it (which can be also done by returning a Future of the chunk). Figure \ref{fig:itenum} illustrates this mechanism.
+
+\begin{figure}[h]
+  \begin{center} 
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/itenum.png}}
+    \caption{Back-pressure mechanism with Enumerator and Iteratee using Futures}
+    \label{fig:itenum}
+  \end{center}
+\end{figure}
 
 Thus we have asynchronous production and consumption with the consumer that "tells" (via its future state) to the producer that it is ready to 
 consume more chunks (or not). This mechanism in known as \verb|back-pressure| and allows the consumer to slow down the producer rate depending on its 
@@ -328,7 +336,7 @@ On the contrary, \textit{hot} sources are for example events coming from a netwo
 a choice has to be done (drop the event, buffer it, ...). These problems will be dealt with more specifically further in the report.
 \\
 
-Futures and Iteratees compositions allows to model the asynchronous processing of both a single value and a stream of value, but 
+Futures and Iteratees compositions allows to model the asynchronous processing of both a single value and a stream of values, but 
 they are not abstractions to built your entire program on (they are parts of your program).
 The Actor model is an abstraction to model your entire application to easily handle concurrency, distribution and fault-tolerance, and can use Futures and Iteratees.
 
@@ -337,30 +345,109 @@ The Actor model is an abstraction to model your entire application to easily han
 First of all, it should be noted the Actor model is not a purely functional model as it use some side-effects. It is generally said that it sits between functional and
 imperative. Nevertheless, we will study it in this part as it integrates very well with functional code and is part of Scala's way of handling concurrency.
 The examples use the Akka framework \footfullcite{bib:akka} that provides actor systems for the JVM in Scala.
+\\
 
-\subsection{The problems of synchronization with threads}
+\subsection{The actor model in Akka}
 
+In imperative languages, synchronization of different concurrent operations is usually done by using locks (including synchronization blocks in Java). 
+However, locks is a very low-level primitive that can easily lead to problems like dead-lock, data inconsistency if not enough locks, 
+slow performance if too many locks. Moreover, IO is generally done explicitly via sockets.
 
+An actor system is a higher level abstraction to deal with concurrency and synchronization, and abstracts away sockets by providing a location transparent model
+via message passing. It enables simple fault-tolerance and distribution.
+\\
 
+An actor is a lightweight concurrent entity. Basically, an actor receives messages from other actors and send messages to other actors. Upon the reception of 
+a message, it can modify its internal state (actors can be stateful), send messages to other actors, and change its message handling behavior of the next messages.
+Each actor has one mailbox that corresponds to a FIFO queue of incoming messages.
+It is guaranteed that message processing is sequential inside a same actor, i.e one should not have to worry about concurrency problems inside an actor. Listing
+\ref{lst:actorexample} shows how to define a simple Actor that counts the number of messages it receives. Messages can sent to him concurrently without worrying
+about synchronization problems.
 
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+case object Message
 
+class Counter extends Actor {
+  var counter = 0
 
+  def receive = {
+    case Message => 
+      counter = counter + 1
+  }
+}
 
+val system = ActorSystem("MySystem")
+val counter = system.actorOf(Props[Counter], name = "counter")
 
+// Sending concurrently 100 messages to the actor 
+// (the send operation "!" do not block or wait for an ack)
+(1 to 100).par foreach (_ => counter ! Message)
+\end{minted}
+\caption{A counter actor}
+\label{lst:actorexample}
+\end{listing}
 
+Another important part of the actor model of Akka is the Tree-like hierarchical organization between actors, called Supervision.
+A parent that create child actors is responsible for them, meaning that it should handle their possible failures (by stopping them,
+restarting them, etc).
+\\
 
-TODO: compare to locks...
+Last but not least, the fact that actors communicates only via message passing (share-nothing architecture) allows location transparency, which
+enables easy distribution. In Akka, the fact that one or several actors are located on different machines is written in a configuration file, meaning that
+one can write the exact same code for a program that execute locally or in a distributed fashion.
 
-TODO: problem: no sequentiality of async op
+Under the hood, a Scheduler is in charge of multiplexing actors into threads, like the ExecutionContext multiplexes Futures into threads.
 
+\subsection{Mixing Actors with Futures}
 
+Akka's actors can be used with library that use Futures. However, one should pay attention to the mix between SchedulerContext 
+and futures' ExeceutionContext. Akka ensures that all message processing are sequential (so that one does not have to worry about concurrency problems inside
+an actor), but if the result of a future tries to modify the internal state of an actor, Akka can not ensure the sequentiality as it only control the SchedulerContext
+that is used to process incoming messages. To avoid this, one must use the \textit{pipeTo} pattern that transform the result a Future in a message sent to the actor.
+Listing \ref{lst:akkasafeunsafe} illustrates this mechanism.
 
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+case class Message(data: String)
+case class Result(result: String)
 
+// An actor that receive a Message, call an async method to process it,
+// store the result of the processing
+class ProcessActor extends Actor {
+  var storeResults = Seq.empty[String]
 
+  def receive = {
+    case Message(data: String) => 
+      val futureResult = process(data)
+      futureResult map { result =>
+        Result(result)
+      } pipeTo self
 
+    case Result(result: String) =>
+      storeResults = storeResults :+ result
+  }
+}
 
+// Below is an example that is concurrently unsafe because the future 
+// modify the internal state of the actor
+class UnsafeActor extends Actor {
+  var storeResults = Seq.empty[String]
 
+  def receive = {
+    case Message(data: String) => 
+      val futureResult = process(data)
+      futureResult foreach { result =>
+        storeResults = storeResults :+ result
+      }
+  }
+}
+\end{minted}
+\caption{Mixing Futures with Actors}
+\label{lst:akkasafeunsafe}
+\end{listing}
 
-
+The following chapter describes the architecture and implementation of the platform that makes heavy use of the functional programming abstractions which have been 
+presented in this chapter.
 
 
