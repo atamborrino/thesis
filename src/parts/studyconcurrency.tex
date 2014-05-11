@@ -203,7 +203,8 @@ val future1And2: Future[(Int, Int)] = future1 zip future2
 We see in Listing \ref{lst:futcompo} that we avoid the "pyramid of doom" effect for sequential composition, and that concurrent composition is very simple
 compared to callback-based programming. Moreover, monad operations allows automatic error propagation. In the sequential composition example,
 if for instance action2 failed, the action3 and action4 will not be executed, and futureResult4 will be a failed future with the Exception
-that action2 throwed. 
+that action2 throwed. For more examples, LinkedIn's engineer Yevgeniy Brikman highlights the composability of Futures in his article named
+"Play Framework: async I/O without the thread pool and callback hell" \footfullcite{bib:playasyncio}.
 \\
 
 In summary, a monadic future is a immutable abstraction for concurrency and asynchronism that allows easy reasoning and composition.
