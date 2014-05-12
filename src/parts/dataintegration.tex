@@ -30,16 +30,18 @@ corresponds to an incremental pull from a certain data source). Once the child a
 The JobScheduler must handle the fact that the job message rate for a data source can be faster than the incremental pull
 of this data source (for example if the data source has produced a lot of new data since the last pull, or if it experiences some network problems). If a pull is still running when 
 a new job message arrives for a data source, the JobScheduler should ignore the new pull message to avoid doing two or more pull in parallel of the same data source and risking a wrong
-order of events. The JobScheduler can do this by assigning the name of the data source when it spawns a new worker child. Then, when a new job message comes in, it checks if it has a child of this name, and only if it has not it spawns a new child. 
+order of events. The JobScheduler can do this by assigning the name of the data source when it spawns a new worker child. Then, when a new job message comes in, it checks if it has a child of this name, and only if such child doesn't exist it spawns a new child.
+
+The actor model also allows to deal with errors. TODO
 
 
 \subsection{Incremental pull jobs}
 
 When it is launched, each job must do an incremental pull on a particular data source via its REST API. For each the data source that the platform must integrate, there exists
 a GET method that allows to get all the resource ids that were updated in a descendant order. The GET response is paginated, meaning that ids are coming 50 by 50 for example (the 
-API caller has to make several call). 
+API caller has to make several call until it has all the ids it wants). 
 
-Thus, a pull job has to pull the event ids that were updated after the last incremental pull. To do this, we define a stream where the producer makes one or several call to the
+A pull job has to pull the event ids that were updated after the last incremental pull. To do this, we define a stream where the producer makes one or several call to the
 paginated REST API to produce a stream of JSON containing the ids of the resources updated. The producer must stop pulling when the date of the current update is less than the last
 update event processed during the previous job. In order to persist for each job the date of the last event processed, we use a MongoDB database with a collection that stores a 
 document with all the last event processed of each data source.
@@ -53,10 +55,11 @@ This stream pipeline must asynchronously process events while keeping ordering o
 \\
 
 Such an architecture allows transparent concurrency and parallelism up to the number of cores. Each child actor is executed concurrently, and the asynchronous stream processing
-is using Iteratees that use Futures to allow transparent concurrency.
+is using Iteratees that use Futures to allow transparent concurrency. If we give to the Iteratees/Futures the SchedulerContext as ExecutionContext, we share threads between actors
+and futures, which will create the best possible use of cores in the machine (the total number of threads roughly equals to the number of cores).
 
-Moreover, the Actor model also allows easy distribution. In this architecture, the JobScheduler can transparently spawns some worker children in other machines. The implementation part
-will detail this part more thoroughly.
+Moreover, in case the system needs to scale out, the Actor model also allows easy distribution. In this architecture, the JobScheduler can transparently spawns some worker 
+children in other machines. The implementation part will detail this part more thoroughly.
 
 
 \section{Implementation}
