@@ -401,6 +401,7 @@ one can write the exact same code for a program that execute locally or in a dis
 Under the hood, a Scheduler is in charge of multiplexing actors into threads, like the ExecutionContext multiplexes Futures into threads.
 
 \subsection{Mixing Actors with Futures}
+\label{sec:mixingactorfuture}
 
 Akka's actors can be used with library that use Futures. However, one should pay attention to the mix between SchedulerContext 
 and futures' ExeceutionContext. Akka ensures that all message processing are sequential (so that one does not have to worry about concurrency problems inside

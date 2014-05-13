@@ -32,7 +32,8 @@ of this data source (for example if the data source has produced a lot of new da
 a new job message arrives for a data source, the JobScheduler should ignore the new pull message to avoid doing two or more pull in parallel of the same data source and risking a wrong
 order of events. The JobScheduler can do this by assigning the name of the data source when it spawns a new worker child. Then, when a new job message comes in, it checks if it has a child of this name, and only if such child doesn't exist it spawns a new child.
 
-The actor model also allows to deal with errors. TODO
+The actor model also allows to deal with errors. In our case, we just want to ignore the failure of a child worker. The next top message for this data source will automatically
+launch a new child worker for this data source. Thus, the JobScheduler actor will have a special Supervision Strategy that ignore the failure of its children.
 
 
 \subsection{Incremental pull jobs}
@@ -49,9 +50,19 @@ document with all the last event processed of each data source.
 Moreover, for each resource, we are only interested in keeping the last update. Indeed, the REST API only gives us the type of update with the id of the resource, so if we pull (in desc order) a delete event before an update event, we want only to retain the delete event.
 
 Then, the stream of events should be re-sorted in ascendant order, then for each event we must query the REST API to transform the resource id in the resource itself, then we must clean the resulting JSON to transform it to a known data model, then create an Journal event to insert in the Journal, and finally update MongoDB with the date of the last event.
-Figure \ref{fig:pulljobpipeline} illustrates this pipeline in a simple schema. 
+Figure \ref{fig:datintflow} illustrates this pipeline in a simple schema. 
 
-This stream pipeline must asynchronously process events while keeping ordering of messages, so Iteratees and Futures will be used to meet these requirements.
+\begin{figure}[h]
+  \begin{center} 
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/datintflow.png}}
+    \caption{Incremental pull stream pipeline}
+    \label{fig:datintflow}
+  \end{center}
+\end{figure}
+
+We see in Figure \ref{fig:datintflow} that the data stream pipeline must asynchronously process (calling external services) events while keeping ordering of messages, so Iteratees and Futures will be used to meet these requirements.
+Moreover, an effort is made to isolate side-effects at the end of the stream pipeline in order to enable easy reuse of intermediate blocks. Isolation of side effects for better code
+reuse and reasoning is one of the core principles of functional programming.
 \\
 
 Such an architecture allows transparent concurrency and parallelism up to the number of cores. Each child actor is executed concurrently, and the asynchronous stream processing
@@ -64,12 +75,137 @@ children in other machines. The implementation part will detail this part more t
 
 \section{Implementation}
 
+\subsection{Puller actor system}
+
+The Akka framework is used to implement the puller actor system in Scala. The JobScheduler is the main/master actor that receives top messages related to a data source and a special
+kind or resource, and spawns a new worker child to accomplish this task only if it has not already a child doing this particular task. Listing \ref{lst:akkajobscheduler} shows the
+code of the JobScheduler actor.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+class JobScheduler extends Actor {
+  private val logger = LazyLogger.apply("services.JobScheduler")
+
+  override val supervisorStrategy = stoppingStrategy
+  
+  def receive = {
+    case jobType: JobMessage =>
+      // ensure sequentiality of the iterations of a same job
+      val isRunning = context.child(jobType.toString) map (_ => true) getOrElse false
+      if (!isRunning) {
+        logger.info("Launching child...")
+        val worker = context.actorOf(Props[JobWorker], name = jobType.toString)
+        worker ! jobType
+      } else {
+        logger.warn("Job " + jobType + " ignored because the previous iteration 
+                                                  of the job is still running.")
+      }
+  }
+}
+\end{minted}
+\caption{JobScheduler actor}
+\label{lst:akkajobscheduler}
+\end{listing}
+
+The \verb|supervisorStrategy| is set to \verb|stoppingStrategy| in order to ignore possible failures of children. Listing \ref{lst:akkajobworker} shows the worker actor code.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+class JobWorker extends Actor {
+  private val logger = LazyLogger.apply("services.JobRunner")
+  
+  type Job = () => Future[Int]
+  case object JobFinished
+  
+  def receive = {
+    case jobType: JobMessage =>
+      val job = getLazyJob(jobType)
+      job() map { result =>
+        logger.info("Finished " + jobType + " job successfully: " + result)
+        JobFinished
+      } recover { case error: Throwable =>
+        logger.error("Finished " + jobType + s" job with error: 
+                                  $error\n${error.getStackTraceString}")
+        JobFinished
+      } pipeTo self
+    
+    case JobFinished => context.stop(self)
+  }
+
+  def getLazyJob: JobMessage => Job = {
+    case DataSource1ResourceType1 => DataSource1ResourceType1.job
+
+    case DataSource1ResourceType2 => DataSource1ResourceType2.job
+
+    case DataSource2ResourceType1 => DataSource2ResourceType1.job
+
+    ...
+  }
+  
+}
+\end{minted}
+\caption{JobWorker actor}
+\label{lst:akkajobworker}
+\end{listing}
+
+The type \verb|Job| is the type that must be implemented for an incremental pull stream job. \verb|() => Future[_]| means that the pull job must be a function that take no
+parameter and return a Future of Int. This Future of Int will be fulfilled when the pull job is finished with the number of Journal events that were created during this iteration
+of the incremental pull job. Upon the completion of the future, we map it to a \verb|JobFinished| message that we pipe to \verb|self| (the current actor). Upon the reception
+of this message, it knows that the job is finished, and so it kills itself (his parent actor JobScheduler will be automatically notified by its death). Please note that
+\verb|context| is part of the actor internal state, so it is not safe to access it into the Future as we saw in section \ref{sec:mixingactorfuture}. That's why we pipe the future to
+a message that will be sent to the actor.
+\\
+
+The module Akka Quartz allows to define in a configuration file the periodicity of the top messages that will be sent to the JobScheduler actor. See the configuration 
+file shown in Listing \ref{lst:configquartz} for an example.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+akka {
+  quartz {
+    schedules {
+
+      DataSource1ResourceType1 {
+        description = "Fire DataSource1ResourceType1 every 5 seconds"
+        expression  = "*/5 * * ? * *"
+      }
+
+      DataSource1ResourceType2 {
+        description = "Fire DataSource1ResourceType2 every 2 seconds"
+        expression  = "*/2 * * ? * *"
+      }
+
+      DataSource2ResourceType1 {
+        description = "Fire DataSource2ResourceType1 every 5 seconds"
+        expression  = "*/5 * * ? * *"
+      }
+        
+    }
+  }
+}
+\end{minted}
+\caption{Cron-style configuration to schedule jobs}
+\label{lst:configquartz}
+\end{listing}
+
+\subsection{Incremental pull jobs}
+
+In this section we will describe the implementation of an incremental pull jobs. We take for example a job that pull every 5 seconds the resources of a certain type, called Credit Notes, that has been created, updated or deleted in a SaaS financial software (called FinancialSoftware for this report).
+\\
+
+Iteratees and Futures are used to model asynchronous non-blocking stream processing. As we will see, the composabilty of Iteratees allows a very clear modularization of the 
+different processing components. 
+
+\subsubsection{Enumerator of Events coming from FinancialSoftware}
+
+The first step is to create an enumerator (a producer) that pull events that happened to a certain resource type (Credit note in our case) since the last pull. The REST API
+of FinancialSoftware is paginated by 50, meaning that a GET request on the last events only give the last 100 events, and a link the next "page" containing the next 50 events.
+The enumerator has to pull the REST API until it detects that the current event has a date inferior to the last update date.
 
 
 
+\subsection{Distribution}
 
-
-
-
+The distribution of such an actor system is very easy thanks to its inherent location transparency.
 
 
