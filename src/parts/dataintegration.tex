@@ -188,7 +188,7 @@ akka {
 \label{lst:configquartz}
 \end{listing}
 
-\subsection{Incremental pull jobs}
+\subsection{Example of a incremental pull job}
 
 In this section we will describe the implementation of an incremental pull jobs. We take for example a job that pull every 5 seconds the resources of a certain type, called Credit Notes, that has been created, updated or deleted in a SaaS financial software (called FinancialSoftware for this report).
 \\
@@ -198,10 +198,212 @@ different processing components.
 
 \subsubsection{Enumerator of Events coming from FinancialSoftware}
 
-The first step is to create an enumerator (a producer) that pull events that happened to a certain resource type (Credit note in our case) since the last pull. The REST API
-of FinancialSoftware is paginated by 50, meaning that a GET request on the last events only give the last 100 events, and a link the next "page" containing the next 50 events.
+The first step is to create an enumerator (a producer) that pull events that happened to a certain resource type since the last pull. The REST API
+of FinancialSoftware is paginated by 50, meaning that a GET request on the last events only give the 50 events, and a link the next "page" containing the next 50 events.
 The enumerator has to pull the REST API until it detects that the current event has a date inferior to the last update date.
+\\
 
+We have to use an enumerator that repeatedly fetch pages from the FinancialSoftware REST API until it has streamed all the events since a date named \verb|since|, and return
+a stream of \verb|FinancialSoftwareEvent| containing each the id of a resource of certain type with its related event (create, update or delete) and its date. 
+Listing \ref{lst:enumfetchsellsy} shows the code of such enumerator.
+
+\begin{listing}
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+case class Page(nb: Int, totalNbPages: Int, docs: Seq[JsObject])
+case class FinancialSoftwareEvent(documentId: String, updateType: String, date: DateTime)
+
+object FinancialSoftware {
+  private val dateFormat = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss")
+
+  val apiUrl = "..."
+  val authentificationParams = "..."
+
+  def retrieveUpdates(resourceType: String, since: DateTime): 
+      Enumerator[FinancialSoftwareEvent] = {
+
+    def getPage(nb: Int): Future[Page] = {
+      val url = apiUrl + "/" + resourceType + "?" + authentificationParams + "&page=" + nb
+      WS.url(url).get map { response =>
+        val json = Json.parse(response.body)
+        val nbPage = (json \ "pagenum").as[Int]
+        val totalNbPages = (json \ "nbpages").as[Int]
+        val docs = (json \ "results").as[Seq[JsObject]]
+        Page(nbPage, totalNbPages, docs)
+      }
+    }
+
+    val producer: Enumerator[Seq[JsObject]] = 
+      Enumerator.unfoldM[Option[Int], Seq[JsObject]](Some(1)) {
+        case Some(nextPageNb) =>
+          getPage(nextPageNb) map { nextPage =>
+            if (nextPage.nb < nextPage.totalNbPages) {
+              Some((Option(nextPage.nb + 1), nextPage.docs))
+            } else {
+              // last page
+              Some(None, nextPage.docs)
+            }
+          }
+        case None => Future.successful(None)
+      }
+
+    val flattenedProducer: Enumerator[JsObject] = 
+      producer &> Enumeratee.mapConcat(identity)
+
+    flattenedProducer &>
+    Enumeratee.map { jsObject =>
+      val id = (jsObject \ "relatedid").as[String]
+      val date = (jsObject \ "date").as[DateTime]
+      val eventType = (jsObject \ "type").as[String]
+      FinancialSoftwareEvent(id, eventType, date)
+    } &>
+    Enumeratee.takeWhile { event =>
+      event.date.compareTo(since) > 0
+    }
+  }
+}
+\end{minted}
+\caption{Enumerator that stream the last events of a data source}
+\label{lst:enumfetchsellsy}
+\end{listing}
+
+The main method to call is \verb|retrieveUpdates| that returns an Enumerator[FinancialSoftwareEvent]. The \verb|&>| operator between an enumerator and an enumeratee
+is an alias for the \verb|through| composition method explained in section \ref{sec:iteratees}.
+
+\subsubsection{Stream pipeline composition}
+
+From this producer of \verb|FinancialSoftwareEvent|, we want to apply several operations to the stream processing pipeline as illustrated in Figure \ref{fig:datintflow}. 
+First, we want to keep only the most recent event of each resource. Listing \ref{lst:keepHeadId} shows how to define such an Enumeratee. It returns a 
+\verb|Map[String, FinancialSoftwareEvent]| where document id is the key and the last event (so the first in the descendant order stream) related to this document (resource)
+is the value.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+def groupByDocumentIdKeepingHeadEvent: 
+    Enumeratee[FinancialSoftwareEvent, Map[String, FinancialSoftwareEvent]] = {
+
+  Enumeratee.grouped(Iteratee.fold(Map.empty[String, FinancialSoftwareEvent]) { 
+    (record, financialEvent) =>
+      val id = financialEvent.documentId
+      if (!record.contains(id))
+        record + (id -> financialEvent)
+      else record
+  })
+}
+\end{minted}
+\caption{Enumeratee that keeps only the most recent FinancialSoftwareEvent of each resource}
+\label{lst:keepHeadId}
+\end{listing}
+
+Then, we must create an enumeratee that transform this Map in a stream of event in ascendant date order (see Listing \ref{lst:enumreorder}).
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+val reorder: Enumeratee[Map[String, FinancialSoftwareEvent], FinancialSoftwareEvent] = 
+  Enumeratee.mapConcat { mapIdToEvent => 
+    val ascendingSeqOfEvents = mapIdToEvent.toSeq.sortBy { case (id, event) => event.date }
+    ascendingSeqOfEvents
+  }
+\end{minted}
+\caption{Enumeratee that re-order events in ascendant order}
+\label{lst:enumreorder}
+\end{listing}
+
+Then, we must call again the data source's REST API to transform the documentId by the document (resource) itself (see Listing \ref{lst:enumgetdoc}).
+Note the use of Enumeratee.mapM that allows sequential (in-order) composition of an asynchronous operation that returns a Future (FinancialSoftware.getResource).
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+def getDocument(resourceType: String): 
+    Enumeratee[FinancialSoftwareEvent, (JsObject, String, DateTime)] =
+
+  Enumeratee.mapM { event =>
+    val id = event.documentId
+    FinancialSoftware.getResource(resourceType + "/" + id) map { response =>
+      (response \ "response").as[JsObject], event.updateType, event.date)
+    }
+  }
+\end{minted}
+\caption{Enumeratee that get a resource according to its id}
+\label{lst:enumgetdoc}
+\end{listing}
+
+Then, several other Enumeratees are created to clean and validate the data that will not be shown here because the code is long and very data specific.
+We name this resultant enumeratee cleanAndValidate of type Enumeratee[(JsObject, String, DateTime), Command[ZEvent]], ZEvent being the type of the Journal events. 
+Listing \ref{lst:zevent} shows the case class ZEvent which will be more detailed in the Journal and Stream Processing part. 
+
+The \verb|Command| type is a functional type that allows to accumulate the side-effect to do at the end of the pipeline. For example, in the data validation part, the
+detection of erroneous data may imply to send a message back to the data source (this type of side-effect is called Annotation). To enhance code re-usability and correctness according to functional programming, the Command type accumulates the different type side-effects that may be done at the end of the pipeline. The final Iteratee that do all the side-effects
+is named performSideEffects. It takes a stream of Command[ZEvent], send the possible annotations to the data source, write the possible ZEvent to the Journal and update
+the MongoDB collection that stores the date of the last event processed. The type is
+Option[ZEvent] because sometimes if data validation fails we don't even want to write an event in the Journal. Listing \ref{lst:finaliterateedataint} illustrates the Command
+type and the performSideEffects iteratee (note that for log purpose, the iteratee counts the number of events it has sent to the Journal).
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+case class ZEvent(
+  id: PathId,
+  resource: String,
+  user: String,
+  date: DateTime,
+  name: String,
+  body: JsObject)
+\end{minted}
+\caption{ZEvent: a Journal event}
+\label{lst:zevent}
+\end{listing}
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+case class Command[A](date: DateTime, maybeEvent: Option[A], annotations: List[Annotation]) 
+
+def performSideEffects: Iteratee[Command[ZEvent], Int] =
+  Iteratee.foldM(0) { case (nbEvents, Command(eventDate, maybeEvent, annotations)) =>
+    annotations foreach { annotation =>
+      annotation.annotate() // send to data source
+    }
+    maybeEvent match {
+      case Some(event) =>
+        for {
+          _ <- RefJournal.write(event)
+          _ <- setLastUpdate(jobKey, eventDate) // 
+        } yield nbEvents + 1
+      case None =>
+        setLastUpdate(jobKey, eventDate) map (_ => nbEvents)
+    }
+  }
+\end{minted}
+\caption{PerformSideEffects Iteratee}
+\label{lst:finaliterateedataint}
+\end{listing}
+
+Thus, we have separately define data producers (enumerator), data transformers (enumeratee) and data sink (iteratee). We now just have to connect them together. Composability
+and static typing allows to do so easily, safely and clearly (see Listing \ref{lst:fullpipelinedataint}). The final type of the job method is Job, the alias type for
+() => Future[Int] that were defined in the Puller actor system implementation section.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+object FinancialSoftware {
+  def job: Job = {
+    val resourceType = "exampleResource"
+    val since = DateTime.now
+
+    val futureLastEventDate = getLastUpdate(resourceType)
+
+    val futureNbEventsInserted: Future[Int] = futureLastEventDate flatMap { lastEventDate =>
+      retrieveUpdates("resourceType1", since) &>
+      groupByDocumentIdKeepingHeadEvent &>
+      reorder &>
+      getDocument(resourceType) &>
+      cleanAndValidate |>>>  // |>>> is an alias for "run"
+      performSideEffects
+    }
+  }
+}
+
+\end{minted}
+\caption{Whole stream processing pipeline from a data source to the Journal}
+\label{lst:fullpipelinedataint}
+\end{listing}
 
 
 \subsection{Distribution}
