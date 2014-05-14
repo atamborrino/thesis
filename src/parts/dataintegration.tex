@@ -160,7 +160,7 @@ The module Akka Quartz allows to define in a configuration file the periodicity 
 file shown in Listing \ref{lst:configquartz} for an example.
 
 \begin{listing}[h]
-\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{text}
 akka {
   quartz {
     schedules {
@@ -207,66 +207,7 @@ We have to use an enumerator that repeatedly fetch pages from the FinancialSoftw
 a stream of \verb|FinancialSoftwareEvent| containing each the id of a resource of certain type with its related event (create, update or delete) and its date. 
 Listing \ref{lst:enumfetchsellsy} shows the code of such enumerator.
 
-\begin{listing}
-\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
-case class Page(nb: Int, totalNbPages: Int, docs: Seq[JsObject])
-case class FinancialSoftwareEvent(documentId: String, updateType: String, date: DateTime)
-
-object FinancialSoftware {
-  private val dateFormat = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss")
-
-  val apiUrl = "..."
-  val authentificationParams = "..."
-
-  def retrieveUpdates(resourceType: String, since: DateTime): 
-      Enumerator[FinancialSoftwareEvent] = {
-
-    def getPage(nb: Int): Future[Page] = {
-      val url = apiUrl + "/" + resourceType + "?" + authentificationParams + "&page=" + nb
-      WS.url(url).get map { response =>
-        val json = Json.parse(response.body)
-        val nbPage = (json \ "pagenum").as[Int]
-        val totalNbPages = (json \ "nbpages").as[Int]
-        val docs = (json \ "results").as[Seq[JsObject]]
-        Page(nbPage, totalNbPages, docs)
-      }
-    }
-
-    val producer: Enumerator[Seq[JsObject]] = 
-      Enumerator.unfoldM[Option[Int], Seq[JsObject]](Some(1)) {
-        case Some(nextPageNb) =>
-          getPage(nextPageNb) map { nextPage =>
-            if (nextPage.nb < nextPage.totalNbPages) {
-              Some((Option(nextPage.nb + 1), nextPage.docs))
-            } else {
-              // last page
-              Some(None, nextPage.docs)
-            }
-          }
-        case None => Future.successful(None)
-      }
-
-    val flattenedProducer: Enumerator[JsObject] = 
-      producer &> Enumeratee.mapConcat(identity)
-
-    flattenedProducer &>
-    Enumeratee.map { jsObject =>
-      val id = (jsObject \ "relatedid").as[String]
-      val date = (jsObject \ "date").as[DateTime]
-      val eventType = (jsObject \ "type").as[String]
-      FinancialSoftwareEvent(id, eventType, date)
-    } &>
-    Enumeratee.takeWhile { event =>
-      event.date.compareTo(since) > 0
-    }
-  }
-}
-\end{minted}
-\caption{Enumerator that stream the last events of a data source}
-\label{lst:enumfetchsellsy}
-\end{listing}
-
-The main method to call is \verb|retrieveUpdates| that returns an Enumerator[FinancialSoftwareEvent]. The \verb|&>| operator between an enumerator and an enumeratee
+The method retrieveUpdates returns an Enumerator[FinancialSoftwareEvent]. The \verb|&>| operator between an enumerator and an enumeratee
 is an alias for the \verb|through| composition method explained in section \ref{sec:iteratees}.
 
 \subsubsection{Stream pipeline composition}
@@ -416,7 +357,7 @@ of its children in a remote machine rather than locally. The configuration file 
 tells the JobScheduler to create the child actor of names DataSource1ResourceType1 and DataSource1ResourceType2 on the remote machine of address 127.0.0.1:2553.
 
 \begin{listing}[h]
-\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{text}
 # Akka master node
 akka {
   actor {
@@ -444,7 +385,7 @@ On the worker machine, an actor system of name "remote" should be launch with th
 one should ensure that the JVM classloader on the worker machine has a JAR containing the class JobWorker.
 
 \begin{listing}[h]
-\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{text}
 # Akka worker node
 akka {
   actor {
@@ -463,7 +404,7 @@ akka {
 \label{lst:configremoteworker}
 \end{listing}
 
-Thus, we transform our system to a mutli-core local system to a distributed system without having to change to code. This can be very useful for systems that first have enough
+Thus, we transform our system to a multi-core local system to a distributed system without having to change to code. This can be very useful for systems that first have enough
 resources with one machine, but after a while needs to be put on several machines for scalability.
 \\
 
@@ -471,5 +412,64 @@ However, one problem with the approach of Akka Remoting is that it is "end-point
 mapped to one machine. For elastic and adaptive scalability, it would be more interesting to give a bunch of worker machines to Akka, and it will determine itself on which machine 
 it is better to launch the new child worker according to the current resource availability of the machines (CPU, RAM, ...).
 
-This approach in currently under development in Akka and is named Akka Cluster \ref{bib:cluserakka}. In Akka cluster, distribution in cluster centric instead of end-to-end centric, meaning that failed nodes are automatically removed from the cluster, and new node can be added at runtime. Moreover, it will allow automatic actor tree partitioning on the cluster, which means that a given actor child will be automatically created on the machine that is the more available at the current time.
+This approach in currently under development in Akka and is named Akka Cluster \footfullcite{bib:akkacluster}. In Akka cluster, distribution in cluster centric instead of end-to-end centric, meaning that failed nodes are automatically removed from the cluster, and new node can be added at runtime. Moreover, it will allow automatic actor tree partitioning on the cluster, which means that a given actor child will be automatically created on the machine that is the more available at the current time.
+
+\begin{listing}
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+case class Page(nb: Int, totalNbPages: Int, docs: Seq[JsObject])
+case class FinancialSoftwareEvent(documentId: String, updateType: String, date: DateTime)
+
+object FinancialSoftware {
+  private val dateFormat = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss")
+
+  val apiUrl = "..."
+  val authentificationParams = "..."
+
+  def retrieveUpdates(resourceType: String, since: DateTime): 
+      Enumerator[FinancialSoftwareEvent] = {
+
+    def getPage(nb: Int): Future[Page] = {
+      val url = apiUrl + "/" + resourceType + "?" + authentificationParams + "&page=" + nb
+      WS.url(url).get map { response =>
+        val json = Json.parse(response.body)
+        val nbPage = (json \ "pagenum").as[Int]
+        val totalNbPages = (json \ "nbpages").as[Int]
+        val docs = (json \ "results").as[Seq[JsObject]]
+        Page(nbPage, totalNbPages, docs)
+      }
+    }
+
+    val producer: Enumerator[Seq[JsObject]] = 
+      Enumerator.unfoldM[Option[Int], Seq[JsObject]](Some(1)) {
+        case Some(nextPageNb) =>
+          getPage(nextPageNb) map { nextPage =>
+            if (nextPage.nb < nextPage.totalNbPages) {
+              Some((Option(nextPage.nb + 1), nextPage.docs))
+            } else {
+              // last page
+              Some(None, nextPage.docs)
+            }
+          }
+        case None => Future.successful(None)
+      }
+
+    val flattenedProducer: Enumerator[JsObject] = 
+      producer &> Enumeratee.mapConcat(identity)
+
+    flattenedProducer &>
+    Enumeratee.map { jsObject =>
+      val id = (jsObject \ "relatedid").as[String]
+      val date = (jsObject \ "date").as[DateTime]
+      val eventType = (jsObject \ "type").as[String]
+      FinancialSoftwareEvent(id, eventType, date)
+    } &>
+    Enumeratee.takeWhile { event =>
+      event.date.compareTo(since) > 0
+    }
+  }
+}
+\end{minted}
+\caption{Enumerator that stream the last events of a data source}
+\label{lst:enumfetchsellsy}
+\end{listing}
 
