@@ -365,7 +365,7 @@ def performSideEffects: Iteratee[Command[ZEvent], Int] =
       case Some(event) =>
         for {
           _ <- RefJournal.write(event)
-          _ <- setLastUpdate(jobKey, eventDate) // 
+          _ <- setLastUpdate(jobKey, eventDate) // set last update date
         } yield nbEvents + 1
       case None =>
         setLastUpdate(jobKey, eventDate) map (_ => nbEvents)
@@ -408,6 +408,68 @@ object FinancialSoftware {
 
 \subsection{Distribution}
 
-The distribution of such an actor system is very easy thanks to its inherent location transparency.
+This architecture can be easily distributed thanks to actor systems' location transparency. Actually, the above code doesn't need any changes to run it in a distributed
+environment. 
+For example, we want the worker children that pull DataSource1 to be executed on a remote machine different than the master machine where the JobScheduler actor runs.
+We can use the Akka Remote module \footfullcite{bib:akkaremote} for this use case. It allows via a configuration file to configure the JobScheduler actor to create some
+of its children in a remote machine rather than locally. The configuration file shown in Listing \ref{lst:configremotemaster} should be put in the master node and 
+tells the JobScheduler to create the child actor of names DataSource1ResourceType1 and DataSource1ResourceType2 on the remote machine of address 127.0.0.1:2553.
 
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+# Akka master node
+akka {
+  actor {
+    provider = "akka.remote.RemoteActorRefProvider"
+    deployment {
+      /master/SellsyCreditnotesJob {
+        remote = "akka.tcp://remote@127.0.0.1:2553"
+      }
+    }
+  }
+  remote {
+    enabled-transports = ["akka.remote.netty.tcp"]
+    netty.tcp {
+      hostname = "127.0.0.1"
+      port = 2552
+    }
+  }
+}
+\end{minted}
+\caption{Configuration file for master node - Akka Remoting}
+\label{lst:configremotemaster}
+\end{listing}
+
+On the worker machine, an actor system of name "remote" should be launch with the configuration file shown in Listing \ref{lst:configremoteworker}. Moreover,
+one should ensure that the JVM classloader on the worker machine has a JAR containing the class JobWorker.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+# Akka worker node
+akka {
+  actor {
+    provider = "akka.remote.RemoteActorRefProvider"
+  }
+  remote {
+    enabled-transports = ["akka.remote.netty.tcp"]
+    netty.tcp {
+      hostname = "127.0.0.1"
+      port = 2553
+    }
+  }
+}  
+\end{minted}
+\caption{Configuration file for worker node - Akka Remoting}
+\label{lst:configremoteworker}
+\end{listing}
+
+Thus, we transform our system to a mutli-core local system to a distributed system without having to change to code. This can be very useful for systems that first have enough
+resources with one machine, but after a while needs to be put on several machines for scalability.
+\\
+
+However, one problem with the approach of Akka Remoting is that it is "end-point to end-point" oriented, meaning that the jobs for data source X or Y are statically
+mapped to one machine. For elastic and adaptive scalability, it would be more interesting to give a bunch of worker machines to Akka, and it will determine itself on which machine 
+it is better to launch the new child worker according to the current resource availability of the machines (CPU, RAM, ...).
+
+This approach in currently under development in Akka and is named Akka Cluster \ref{bib:cluserakka}. In Akka cluster, distribution in cluster centric instead of end-to-end centric, meaning that failed nodes are automatically removed from the cluster, and new node can be added at runtime. Moreover, it will allow automatic actor tree partitioning on the cluster, which means that a given actor child will be automatically created on the machine that is the more available at the current time.
 
