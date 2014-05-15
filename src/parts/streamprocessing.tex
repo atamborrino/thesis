@@ -6,11 +6,11 @@ As presented in the Requirements chapter, the Journal needs to store the events 
 to the real-time stream of events. Stream processors can subscribe to themselves in a Tree-like structure (see Figure \ref{fig:tree}), and upon the reception of an event can create a substream of events and perform a side-effect.
 \\
 
-\subsection{Naive solutions}
+\subsection{Naive push-only solutions}
 
 A important problem that will model the architecture is the fact that the Journal can have an event stream rate that is superior to its subscribers. More generally,
 any parent node (Journal or processor) can have a output stream rate that is superior to one or several of its children. 
-Several simple solutions can be applied, but none of them were applicable for our system.
+Several simple \textit{push} solutions can be applied, but none of them were applicable for our system.
 
 First, any child can just have a in-memory buffer that store the incoming events not yet processed. However, an in-memory buffer has obvious limitations like the danger
 of causing an OutOfMemory exception. Moreover, as said in the non functional requirements part, one goal is to limit the RAM consumption of the platform. Thus, this solution is
@@ -26,12 +26,18 @@ As a reminder, no message loss is a requirements for the platform, so dropping t
 
 \subsection{Pull-based streaming with replayable event streams}
 
-
-
-
 TODO: polling problem => long-polling with Futures / Promises
 explain back-pressure thoroughly, TCP included ! (maybe in its own subsubsection) (see Evernote for bib)
+
 Kafka inspired ! multi-consumers long-polling
+
+\subsection{Adaptive push-pull streaming with back-pressure}
+
+Optimization: push mode with child states in parent node
+
+back-pressure
+
+The "ACK" mechanism is at TCP-level in distributed mode -> very efficient !
 
 \subsection{Event-sourced persistent stream processors}
 
@@ -53,16 +59,8 @@ TODO: no need to save all events, but replayabilty takes longer
 
 TODO: Storm inspired !
 
+
 \subsection{The Journal case: ensuring ordering with non-replayable multiples sources}
-
-
-\subsection{Adaptive push-pull streaming}
-
-Optimization: push mode with child states in parent node
-
-back-pressure
-
-\subsection{Distribution}
 
 
 \section{Implementation}
@@ -72,6 +70,8 @@ back-pressure
 TODO: pas Actors car:
 - pas back-pressure auto
 - sequentiality of async op pas auto, besoin de stash, in-memory inefficient car remet dans la mailbox a chaque fois...
+
+--> Custom Stream Processor abstraction on top of Iteratees/Futures/Promises !
 
 \subsection{...}
 
