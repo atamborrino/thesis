@@ -1,5 +1,72 @@
 \chapter{Architecture and implementation of the Journal and Stream Processing part}
 
+\section{Architecture}
+
+As presented in the Requirements chapter, the Journal needs to store the events an append-only list. The Journal should also provide a way for stream processors to subscribe 
+to the real-time stream of events. Stream processors can subscribe to themselves in a Tree-like structure (see Figure \ref{fig:tree}), and upon the reception of an event can create a substream of events and perform a side-effect.
+\\
+
+\subsection{Naive solutions}
+
+A important problem that will model the architecture is the fact that the Journal can have an event stream rate that is superior to its subscribers. More generally,
+any parent node (Journal or processor) can have a output stream rate that is superior to one or several of its children. 
+Several simple solutions can be applied, but none of them were applicable for our system.
+
+First, any child can just have a in-memory buffer that store the incoming events not yet processed. However, an in-memory buffer has obvious limitations like the danger
+of causing an OutOfMemory exception. Moreover, as said in the non functional requirements part, one goal is to limit the RAM consumption of the platform. Thus, this solution is
+not applicable.
+
+Another solution can be for a parent node to wait that all its children have processed the current event to send the next one via an ACK mechanism. 
+An obvious issue of this approach is that
+the slowest child of a parent will slow down the event stream rate for every of its siblings. This is clearly not acceptable for a scalable system with loose coupling 
+between components. Moreover, such a solution implies that the failure of a child stops the stream for its siblings, which is clearly unacceptable.
+
+As a reminder, no message loss is a requirements for the platform, so dropping the events if the stream rate is too fast is not an option.
+\\
+
+\subsection{Pull-based streaming with replayable event streams}
+
+TODO: polling problem => long-polling with Futures / Promises
+
+back-pressure
+
+\subsection{Event-sourced persistent stream processors}
+
+The architecture choice to allow loose coupling and scalability while ensuring no event loss is not apply the event sourcing principle not only to the Journal, but also to 
+stream processors. We call this type of stream processor \textit{Persistent Stream Processor}. When a persistent stream processor receives an event, it processes it 
+to create a substream of events that is stored in a local persistent journal.
+
+TODO: side-effect is event-sourcing ! atomicity for fault-tolerance !
+
+\subsection{Side-effect stream processors}
+
+TODO: side-effect needs to save last process id
+TODO: no need to save all events, but replayabilty takes longer
+
+=> at least once for processing, different than side-effect !
+
+\subsection{The sub-stream problem: ensuring message ordering with auto-generated Path Ids}
+
+
+\subsection{The Journal case: ensuring ordering with non-replayable multiples sources}
+
+
+\subsection{Adaptive push-pull streaming}
+
+Optimization: push mode with child states in parent node
+
+back-pressure
+
+
+\section{Implementation}
+
+\subsection{Abstractions choice}
+
 TODO: pas Actors car:
 - pas back-pressure auto
 - sequentiality of async op pas auto, besoin de stash, in-memory inefficient car remet dans la mailbox a chaque fois...
+
+\subsection{...}
+
+
+
