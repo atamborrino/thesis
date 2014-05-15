@@ -26,9 +26,12 @@ As a reminder, no message loss is a requirements for the platform, so dropping t
 
 \subsection{Pull-based streaming with replayable event streams}
 
-TODO: polling problem => long-polling with Futures / Promises
 
-back-pressure
+
+
+TODO: polling problem => long-polling with Futures / Promises
+explain back-pressure thoroughly, TCP included ! (maybe in its own subsubsection) (see Evernote for bib)
+Kafka inspired ! multi-consumers long-polling
 
 \subsection{Event-sourced persistent stream processors}
 
@@ -38,7 +41,7 @@ to create a substream of events that is stored in a local persistent journal.
 
 TODO: side-effect is event-sourcing ! atomicity for fault-tolerance !
 
-\subsection{Side-effect stream processors}
+\subsection{Side-effect and volatile stream processors}
 
 TODO: side-effect needs to save last process id
 TODO: no need to save all events, but replayabilty takes longer
@@ -48,6 +51,8 @@ TODO: no need to save all events, but replayabilty takes longer
 \subsection{The sub-stream problem: ensuring message ordering with auto-generated Path Ids}
 
 
+TODO: Storm inspired !
+
 \subsection{The Journal case: ensuring ordering with non-replayable multiples sources}
 
 
@@ -56,6 +61,8 @@ TODO: no need to save all events, but replayabilty takes longer
 Optimization: push mode with child states in parent node
 
 back-pressure
+
+\subsection{Distribution}
 
 
 \section{Implementation}
