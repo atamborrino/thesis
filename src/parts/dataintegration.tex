@@ -270,7 +270,8 @@ def getDocument(resourceType: String):
 
 Then, several other Enumeratees are created to clean and validate the data that will not be shown here because the code is long and very data specific.
 We name this resultant enumeratee cleanAndValidate of type Enumeratee[(JsObject, String, DateTime), Command[ZEvent]], ZEvent being the type of the Journal events. 
-Listing \ref{lst:zevent} shows the case class ZEvent which will be more detailed in the Journal and Stream Processing part. 
+Listing \ref{lst:zevent} shows the case class ZEvent which will be more detailed in the Journal and Stream Processing part. It contains the name of the resource (for example
+\verb|/resourceType1/id4|), the user that inserted the event in the Journal, the insertion date, the type of event and the body (data) of the event in a JSON object.
 
 The \verb|Command| type is a functional type that allows to accumulate the side-effect to do at the end of the pipeline. For example, in the data validation part, the
 detection of erroneous data may imply to send a message back to the data source (this type of side-effect is called Annotation). To enhance code re-usability and correctness according to functional programming, the Command type accumulates the different type side-effects that may be done at the end of the pipeline. The final Iteratee that do all the side-effects

@@ -24,13 +24,39 @@ between components. Moreover, such a solution implies that the failure of a chil
 As a reminder, no message loss is a requirements for the platform, so dropping the events if the stream rate is too fast is not an option.
 \\
 
-\subsection{Pull-based streaming with replayable event streams}
+\subsection{Pull-based streaming with replayable event-sourced processors}
 
-TODO: polling problem => long-polling with Futures / Promises
+One suitable solution is to use a pull-model instead of a push-model. For each received event, a processor processes it to produce a substream, optionally do some
+side effects on the substream, and stores this substream in a local journal. Thus, each processor maintains its own event journal, so each processor is \textit{event-sourced}.
+This allows each child to maintain a cursor on the journal of its parent pointing on the next event to pull. Thus, children can have totally different pulling and processing speed, they are not coupled to each other. This approach of pull-based stream system with decoupled multi-consumers using cursors comes from Apache Kafka, a distributed messaging system for log processing created at LinkedIn \footfullcite{bib:kafka}. 
 
-Kafka inspired ! multi-consumers long-polling
+A common problem with pull based-system is the polling part. How do children to known when the next event is ready to be pulled? The naive way to do this is to check every X seconds / milliseconds if the parent has a new event in its journal. This can waste a lot of resources when a parent has no new event for a while. The solution brought by Kafka is to 
+perform long-polling: when the child's cursor go the next event, either it pulls the next event if it exists or it blocks until a new event comes in to pull it. Thus, children does not have to pull periodically to know if there is a new event.
+
+However, the term "blocks" does not really get along well with our reactive non-blocking architecture. We therefore have to find a way to implement long-polling without blocking
+threads. To do that, we will use a new functional programming abstraction that comes with Futures: Promises. Mixing Futures, Iteratees and Promises, we will be able to implement
+an asynchronous non-blocking long-polling system (more details in the Implementation section \ref{sec:streamimplementation}).
+\\
+
+Both the Journal and the local journals of processors are persistent using MongoDB. MongoDB is a document-oriented NoSQL database \footfullcite{bib:mongodb} that stores BSON documents (a binary representation of JSON). The format of stored event is a BSON-serialized version of ZEvents (see Listing \ref{lst:zevent}). It contains an id, the name of the resource (for example \verb|/resourceType1/id4|), the user that inserted the event in the Journal, the insertion date, the type of event and the body (data) of the event in a JSON object. To model a journal, we just use a MongoDB collection where we only insert new documents (events). To keep the insertion order of events, an id of type PathId is serialized
+into the document. MongoDB provides a built-in id generation mechanism that keep the insertion order, but the fact of ensuring message ordering of substream across processors implies to create a more sophisticated id generation mechanism. This will be explained thoroughly in section \ref{sec:substreamproblem}.
+\\
+
+Thus, each event produced by a processor goes into its MongoDB local journal, and children pull events (one by one or by bulk) according to their position in their parent
+local journal. If one or several of them is "up-to-date" with the last event of its parent, a long-polling mechanism allows to prevent them to waste resources periodically pulling their parent.
+
+However, this mechanism can be improved. For example, if a parent processor knows that one of its children is "up-to-date", it can directly send him the next event without
+passing by the persistent storage to improve efficiency. This approach is described in the next section.
+
 
 \subsection{Adaptive push-pull streaming with back-pressure}
+
+
+
+
+
+
+
 
 Optimization: push mode with child states in parent node
 
@@ -38,7 +64,7 @@ explain back-pressure thoroughly, TCP included ! (maybe in its own subsubsection
 
 The "ACK" mechanism is at TCP-level in distributed mode -> very efficient !
 
-\subsection{Event-sourced persistent stream processors}
+\subsection{Persistent stream processors}
 
 The architecture choice to allow loose coupling and scalability while ensuring no event loss is not apply the event sourcing principle not only to the Journal, but also to 
 stream processors. We call this type of stream processor \textit{Persistent Stream Processor}. When a persistent stream processor receives an event, it processes it 
@@ -54,7 +80,7 @@ TODO: no need to save all events, but replayabilty takes longer
 => at least once for processing, different than side-effect !
 
 \subsection{The sub-stream problem: ensuring message ordering with auto-generated Path Ids}
-
+\label{sec:substreamproblem}
 
 TODO: Storm inspired !
 
@@ -64,6 +90,7 @@ TODO: Storm inspired !
 Mongo IDS ?
 
 \section{Implementation}
+\label{sec:streamimplementation}
 
 \subsection{Abstractions choice}
 
