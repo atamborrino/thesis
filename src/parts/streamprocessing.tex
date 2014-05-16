@@ -47,7 +47,7 @@ local journal. If one or several of them is "up-to-date" with the last event of 
 However, this mechanism can be improved. For example, if a parent processor knows that one of its children is "up-to-date", it can directly send him the next event without
 passing by the persistent storage to improve efficiency. This approach is described in the next section.
 
-\subsection{Fault-tolerant replayable processors with exactly-once side-effect semantic using Path Ids}
+\subsection{Fault-tolerant persistent processors with exactly-once side-effect semantic using Path Ids}
 \label{sec:substreamproblem}
 
 Of course, a persistent storage on MongoDB allows fault-tolerance in case of a processor crashes and restarts. When a processor restarts, it checks in MongoDB what was the
@@ -55,9 +55,33 @@ last id of the event it successfully processed before crashing, and ask its pare
 However, if a processor crashes \textit{during} the processing of an event, how to know if it has successfully and entirely processed this event? What it means to process "entirely" an incoming event?
 \\
 
-First, we differentiate in a processor the \textbf{process} method and the \textbf{performAtomicSideEffect} method. As stated in the Requirement chapter, the process method 
-takes one event and produce a substream of events from it. Its signature is process \verb|process(event: I): Enumerator[O]| where I is the type of in event of O the type
-of out events. As we saw in the previous parts, an Enumerator is a functional abstraction for a non-blocking stream producer.
+First, we differentiate the \textbf{process} method and the \textbf{performAtomicSideEffect} method in a processor. As stated in the Requirement chapter, the process method 
+takes one event and produces a substream of events from it. Its signature is \verb|process(event: I): Enumerator[O]| where I is the type of input events and O the type
+of out events. As we saw in the previous parts, an Enumerator is a functional abstraction for a non-blocking stream producer. The function implementing the process interface
+should be pure, i.e should not have any side-effect. More precisely, it can have side-effects, but the call semantic of this function is \textit{at-least-once} for each 
+event, meaning that the same side-effect can be called several times. Thus, it is ok to have idempotent side-effects. However, for side-effects that are non-idempotent and
+thus requires \textit{exactly-once} semantic, one can use the performAtomicSideEffect method whose signature is \verb|performAtomicSideEffect(event: O): Future[Unit]|.
+The function is called for each output event of the created sub-stream and is guaranteed to be called exactly-once for each output event even in cases of failures. The
+Future[Unit] returns type is a Future returning nothing (normal for a side-effect). The difference of returning Future[Unit] instead of simply returning Unit is that a side-effect
+can be asynchronous but returning a Future of nothing allows us to known when this side-effect is finished. This enables to ensure sequentiality of side-effect (the side-effect
+of the out event 1 in the substream will be finished when the side-effect of out event 2 begins).
+
+With these two functions, fault-tolerance is handled in a clear manner. process is an user-defined function that is the logic of the processor: how to derive one event to a substream of derived events. As a pure function, it is not a problem if it is called several times for the same input. performAtomicSideEffect is then used on each event to
+save the event to a local journal. This operation must me \textit{atomic}. Thus, if a processor crashes, when it recovers it just take the last out event id processed LastID and its parent for the event that generated the substream containing this out event. The parent re-sends this event which is put again in the process method (at-least-once call semantic).
+This process method re-creates the substream, and a filter is put on the substream to take only the out events that are \textit{after} the original LastID ouptut event. This
+filtered substream is then given to the performAtomicSideEffect method that goes on saving events as usual.
+Thus, we have ensured no message loss, no message duplication and guaranteed message ordering in cases of processor crashes. It is easy to see why the "insert in journal" operation in performAtomicSideEffect needs to be atomic: if it is not (say it has 2 steps), if the processor fails between step 1 and step 2, we are in a position where
+we don't know if the current out event has been inserted or not where the processor recover. 
+
+This atomicity leads to a potential problem: if we already use the performAtomicSideEffect for inserting output events in the journal, there is no room left for an arbitrary side-effect that can be defined by the user of the library. This is why we define two kinds of processors: \textit{persistent} processors where the performAtomicSideEffect is already implemented to insert output events in a local journal (the type of processor described in this section), and \textit{side-effect} processors that allows to define
+an arbitrary atomic side-effect. Side-effect processors will be described in details in section \ref{sec:sideeffectproc}.
+
+Thus, for a persistent processor, the fact that a input event has been "entirely" processed means that all of the events in the substream it has generated are inserted in the local journal.
+\\
+
+One key operation that has not been explained is how to know which input event has generated a particular output event generated in a substream. This is a complex task for which the notion of Path Ids has been created.
+
+\subsubsection{Auto generation of tree-like Ids: Path Ids}
 
 
 
@@ -66,6 +90,7 @@ TODO: Storm inspired !
 Explain Mongo Ids...
 
 \subsection{Side-effect and volatile stream processors}
+\label{sec:sideeffectproc}
 
 TODO: side-effect needs to save last process id
 TODO: no need to save all events, but replayabilty takes longer
