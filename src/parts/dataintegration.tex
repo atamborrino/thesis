@@ -44,8 +44,7 @@ API caller has to make several call until it has all the ids it wants).
 
 A pull job has to pull the event ids that were updated after the last incremental pull. To do this, we define a stream where the producer makes one or several call to the
 paginated REST API to produce a stream of JSON containing the ids of the resources updated. The producer must stop pulling when the date of the current update is less than the last
-update event processed during the previous job. In order to persist for each job the date of the last event processed, we use a MongoDB database with a collection that stores a 
-document with all the last event processed of each data source.
+update event processed during the previous job. In order to persist for each job the date of the last event processed, we use a persistent storage that stores the timestamps of the last event processed of each data source (the storage system is the NoSQL database MongoDB \footfullcite{bib:mongodb}, but it can be any other simple storage system that can store an association of job names with their timestamp).
 
 Moreover, for each resource, we are only interested in keeping the last update. Indeed, the REST API only gives us the type of update with the id of the resource, so if we pull (in desc order) a delete event before an update event, we want only to retain the delete event.
 
