@@ -220,21 +220,3 @@ that this new event will be ordered after the previous event. The future also pr
 ignoring the Futures returned. However, in this case, there is no guarantee that the event has been correctly inserted, and if all producers acts like that the Journal may be overwhelmed. Thus, if possible, it is better to throttle the insertion rate using the Future returned by the write method.
 
 
-\section{Implementation}
-\label{sec:streamimplementation}
-
-\subsection{Abstractions choice}
-
-TODO: pas Actors car:
-- pas back-pressure auto
-- sequentiality of async op pas auto, besoin de stash, in-memory inefficient car remet dans la mailbox a chaque fois...
-
---> Custom Stream Processor abstraction on top of Iteratees/Futures/Promises !
-
-\subsection{...}
-
-TODO: explains pathid SerDe in Mongo
-TODO: explains long-polling promises...
-TODO: back-pressure stream even from local journal to children
-
-
