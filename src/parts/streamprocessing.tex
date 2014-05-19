@@ -139,12 +139,11 @@ produces the substream event 1-2-1 and event 1-2-2. However, it has to remind th
   \end{center}
 \end{figure}
 
-
 In the end, side-effect processors allows to define an arbitrary side-effect (with some constraints), allows to save disk space because it does not maintain
 a local journal, but it implies that event streams replays take longer because a side-effect processor cannot replay the stream itself, it has to ask to its parent.
 
 
-\subsection{Adaptive push-pull streaming with back-pressure}
+\subsection{Adaptive push-pull streaming with back-pressure and distributed mode}
 
 An important optimization can still be made to this model. For now, for a processor point of view, receiving input event and sending output events are totally
 decoupled tasks that are asynchronous between each other. For persistent processor, all input events are processed and the result substream is written to the local journal, and then children consumes events from this journal. For side-effect processor, it means that each time that a side-effect processor receives a new input, its children will notified that there is a new event via the long-polling mechanism, but for the children to get this event via the cursor mechanism the processor has to ask again its parent independently for each child (as it has no persistence). 
@@ -160,29 +159,57 @@ that the generated events are directly sent to its child, without him telling th
 
 WaitingForDownStreamAck is an intermediate step where the parent knows that it has sent an output event to its child, and is waiting for a child ACK meaning that it has
 processed the event (and inserted it in its local journal in case of a persistent processor). Thus, if a new input event comes in when the parent maintains this state
-for its child, ... TODO
+for its child, it means that the child is now Late in the stream, so the parent moves the child's state to Late. If an ACK message comes from the child, the parent moves the
+child's state to UpToDate.
+
+Late means that the child is late in the stream, so there is no point sending him the processed events when a new input event arrives (or it will receive the events out of order).
+In this case, the child will replay the stream at its rate. However, if it manages to catch-up with the real-time stream, its state will move to UpTodate.
+
+Figure \ref{fig:childstates} illustrates this as a state transition diagram.
+
+\begin{figure}[h]
+  \begin{center} 
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/childstates.png}}
+    \caption{State transition diagram for each child of a parent processor}
+    \label{fig:childstates}
+  \end{center}
+\end{figure}
+
+\subsubsection{Optimized ACK mechanism with back-pressure using Iteratees}
+
+Concerning the ACK mechanism, a naive way to do it would be for the child to send an application-level ACK message for each event received and processed. We will take
+a more performant approach by leveraging the built-in back-pressure mechanism of Iteratees. 
+
+As explained in section \ref{sec:iteratees}, the back-pressure mechanism allows a stream producer to automatically slow down its producing rate if the consumer is slow. 
+More precisely, the "producing" code of the Enumerator will be called to generate the next event only when the consuming Iteratee has totally consumed the current event.
+In our case, the Enumerator has the choice to get a stream from the local journal or its parent (Late case), or to directly send the latest output event (UpToDate case).
+The Iteratee is the child that receives an event and processes it to create a substream.
+Thus, we see that we don't need to create an application-level ACK as the mechanism of notifying the producer when the consumer has finished processing an event is already
+built-in in the Iteratee concept. But how does this work in a distributed setting ?
 
 
+\subsubsection{Distributed processors with TCP-level back-pressure}
 
-Asynchronous in - out in processors
+A processor is composed of one Iteratee in input and several Enumerators in output (one per child). The pipeline composed by an Enumerator (source) and an Iteratee (sink) can
+be distributed via an HTTP chunked stream. An HTTP chunked stream is an unidirectional stream protocol that allows the producer (server) to maintain a connection with a client to send a possibly infinite number of chunks. An enumerator can be transformed very easily in a HTTP stream producer, and an Iteratee can be easily transformed in a HTTP stream client(more details in the Implementation part). Thus, processors can be distributed via HTTP streams.
+\\
 
-The pull-based mechanism can be improved to limit the accesses to the local persistent journal.
+By plugging Enumerators / Iteratees via an HTTP stream, one very interesting property is that the back-pressure mechanism remains by leveraging TCP's flow control mechanism. In a few words, if a client does not consume its receive TCP buffer, it will send an ACK message to the sender with a sliding window of size 0, meaning that it does not want more data for now, so the sender stop sending data (this is known as TCP's sliding window flow control protocol).
 
-
-Optimization: push mode with child states in parent node
-
-explain back-pressure thoroughly, TCP included ! (maybe in its own subsubsection) (see Evernote for bib)
-
-The "ACK" mechanism is at TCP-level in distributed mode -> very efficient !
+Thus, Play Framework's Iteratee library leverages this mechanism the propagate back-pressure in a distributed setting. Therefore we have a TCP-level ACK and back-pressure mechanism, which is of course very performant compared to a application level ACK messages. Figure \ref{fig:} illustrates this concept.
 
 
 \subsection{The Journal case: ensuring ordering with non-replayable multiples sources}
 
-Mongo IDS ?
+The Journal (root of the processing tree) is a particular processor as its source is not a repayable processor. Instead, it has multiples sources: all the pullers from the Data
+Integration part that push events concurrently in the Journal.
 
-Only in impl part ? no...
+Concerning the ordering of the events, a particular abstraction from Play Framework Iteratee library is used, called Broadcast channel, that allows to linearize into a single pipeline events that are pushed from different sources (more details in the Implementation part).
 
-
+Concerning back-pressure, it depends on the data source if the producer can be slow down or not. To handle different cases, the Journal has an interface to push events that allows optional back-pressure. Its signature is \verb|write(event: E): Future[E]|. E is the type of event. The method returns a Future[E] that will be fulfilled when the event has been inserted in the journal. The event returned in the future in the same event inserted but with a PathId added when it has been inserted in the MongoDB-based journal.
+Thus, this Future is like an ACK that the Journal had successfully stored the event. If another event is written \textit{once} this Future has been fulfilled, it is ensured
+that this new event will be ordered after the previous event. The future also propagate back-pressure, because if a producer wait for this Future before sending a new event, it means that it has waited that the Journal had time to process it. Producers that can not wait for the Future to be fulfilled can call the \verb|write| method several times
+ignoring the Futures returned. However, in this case, there is no guarantee that the event has been correctly inserted, and if all producers acts like that the Journal may be overwhelmed. Thus, if possible, it is better to throttle the insertion rate using the Future returned by the write method.
 
 \section{Implementation}
 \label{sec:streamimplementation}
@@ -199,4 +226,6 @@ TODO: pas Actors car:
 
 TODO: explains pathid SerDe in Mongo
 TODO: explains long-polling promises...
+TODO: back-pressure stream even from local journal to children
+
 
