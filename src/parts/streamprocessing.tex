@@ -196,20 +196,29 @@ be distributed via an HTTP chunked stream. An HTTP chunked stream is an unidirec
 
 By plugging Enumerators / Iteratees via an HTTP stream, one very interesting property is that the back-pressure mechanism remains by leveraging TCP's flow control mechanism. In a few words, if a client does not consume its receive TCP buffer, it will send an ACK message to the sender with a sliding window of size 0, meaning that it does not want more data for now, so the sender stop sending data (this is known as TCP's sliding window flow control protocol).
 
-Thus, Play Framework's Iteratee library leverages this mechanism the propagate back-pressure in a distributed setting. Therefore we have a TCP-level ACK and back-pressure mechanism, which is of course very performant compared to a application level ACK messages. Figure \ref{fig:} illustrates this concept.
+Thus, Play Framework's Iteratee library leverages this mechanism the propagate back-pressure in a distributed setting. Therefore we have a TCP-level ACK and back-pressure mechanism, which is of course very performant compared to an application level ACK messages. Figure \ref{fig:tcpbackpressure} illustrates this concept.
+
+\begin{figure}[h]
+  \begin{center} 
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/tcpbackpressure.png}}
+    \caption{Distributed processors with TCP-level back-pressure}
+    \label{fig:tcpbackpressure}
+  \end{center}
+\end{figure}
 
 
-\subsection{The Journal case: ensuring ordering with non-replayable multiples sources}
+\subsection{The Journal: a special case of persistent processor}
 
-The Journal (root of the processing tree) is a particular processor as its source is not a repayable processor. Instead, it has multiples sources: all the pullers from the Data
-Integration part that push events concurrently in the Journal.
+The Journal (root of the processing tree) is a particular processor as its source is not a replayable processor. Instead, it has multiple sources: all the pullers from the Data
+Integration part that push events concurrently in the Journal. Moreover, its \verb|process| method is identity, as the events inserted are the same as the output events.
 
 Concerning the ordering of the events, a particular abstraction from Play Framework Iteratee library is used, called Broadcast channel, that allows to linearize into a single pipeline events that are pushed from different sources (more details in the Implementation part).
 
-Concerning back-pressure, it depends on the data source if the producer can be slow down or not. To handle different cases, the Journal has an interface to push events that allows optional back-pressure. Its signature is \verb|write(event: E): Future[E]|. E is the type of event. The method returns a Future[E] that will be fulfilled when the event has been inserted in the journal. The event returned in the future in the same event inserted but with a PathId added when it has been inserted in the MongoDB-based journal.
+Concerning back-pressure, it depends on the data source if the producer can be slow down or not. To handle different cases, the Journal has an interface to push events that allows optional back-pressure. Its signature is \textbf{write(event: E): Future[E]}. E is the type of event. The method returns a Future[E] that will be fulfilled when the event has been inserted in the journal. The event returned in the future in the same event inserted but with a PathId added when it has been inserted in the MongoDB-based journal.
 Thus, this Future is like an ACK that the Journal had successfully stored the event. If another event is written \textit{once} this Future has been fulfilled, it is ensured
 that this new event will be ordered after the previous event. The future also propagate back-pressure, because if a producer wait for this Future before sending a new event, it means that it has waited that the Journal had time to process it. Producers that can not wait for the Future to be fulfilled can call the \verb|write| method several times
 ignoring the Futures returned. However, in this case, there is no guarantee that the event has been correctly inserted, and if all producers acts like that the Journal may be overwhelmed. Thus, if possible, it is better to throttle the insertion rate using the Future returned by the write method.
+
 
 \section{Implementation}
 \label{sec:streamimplementation}
