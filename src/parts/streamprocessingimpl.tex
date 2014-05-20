@@ -283,8 +283,56 @@ abstract class PersistentStreamProcessor[I, O](implicit ec: ExecutionContext,
 
 \subsection{Journal}
 
+The Journal extends StreamProcessor but it differs from other processors by its way of handling input. Indeed, the Journal has multiple pushers (that pull from various data sources) that push events concurrently. To be sure to insert events with an increasing ordered id, we use Concurrent.broadcast that provides a channel to push events. Pushed events will go into an unique sequential pipeline that first creates a PathId for the event, and then insert this event with its PathId to MongoDB (this is done by the journalSink Iteratee). Listing \ref{lst:journalimpl} shows the code of the Journal.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+abstract class Journal[E](implicit ec: ExecutionContext, eo: Evented[E]) 
+    extends StreamProcessor[E, E] {
+
+  def collection: JSONCollection
+
+  val (enum, channel) = Concurrent.broadcast[(E, Promise[E])]
+  
+  protected  def journalSink: Iteratee[(E, Promise[E]), Unit] = {
+   Enumeratee.mapM[(E, Promise[E])] { case (event, p) =>
+     // generate new event id to ensure that event are inserted in ascending order
+     val bsonid = BSONObjectID.generate 
+     val value = bsonid.value
+     value(7) = Byte.MinValue // remove thread id to ensure sequentiality of events
+     value(8) = Byte.MinValue
+     val eventToInsert = eo.updateId(event, PathId(BSONObjectID(value).stringify))
+     collection.insert(eo.serialize(eventToInsert)) map { _ =>
+       p.trySuccess(eventToInsert)
+       eventToInsert
+     }
+   } &>> downstreamTrigger
+  }
+
+  def start(): Future[Unit] = {
+    enum |>> journalSink
+    Future.successful()
+  }
 
 
+  def write(event: E): Future[E] = {
+    val p = promise[E]
+    channel.push(event, p)
+    p.future
+  }
 
+  def writeSequentially(events: Seq[E]): Future[Option[E]] =
+    Enumerator.enumerate(events) |>>> Iteratee.foldM(Option.empty[E]) { (_, event) =>
+      write(event) map (Some(_))
+    }
 
+  def process(event: E): Enumerator[E] = Enumerator(event)
+  override def inStreamSink = Iteratee.ignore // use journalSink instead
+  def performAtomicSideEffect(event: E): Future[Unit] = Future.successful(())
+  override def updatePathId = Enumeratee.map(identity) // 1 to 1 event generation relationship
+}
+\end{minted}
+\caption{Journal implementation}
+\label{lst:journalimpl}
+\end{listing}
 
