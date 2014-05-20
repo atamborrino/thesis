@@ -34,7 +34,7 @@ A common problem with pull based-system is the polling part. How do children to 
 perform long-polling: when the child's cursor go the next event, either it pulls the next event if it exists or it blocks until a new event comes in to pull it. Thus, children does not have to pull periodically to know if there is a new event.
 
 However, the term "blocks" does not really get along well with our reactive non-blocking architecture. We therefore have to find a way to implement long-polling without blocking
-threads. To do that, we will use a new functional programming abstraction that comes with Futures: Promises. Mixing Futures, Iteratees and Promises, we will be able to implement
+threads. To do that, we will use the Promise abstraction described in section \ref{sec:promises}. Mixing Futures, Iteratees and Promises, we will be able to implement
 an asynchronous non-blocking long-polling system (more details in the Implementation section \ref{sec:streamimplementation}).
 
 Both the Journal and the local journals of processors are persistent using MongoDB. MongoDB is a document-oriented NoSQL database \footfullcite{bib:mongodb} that stores BSON documents (a binary representation of JSON). The format of stored event is a BSON-serialized version of ZEvents (see Listing \ref{lst:zevent}). It contains an id, the name of the resource (for example \verb|/resourceType1/id4|), the user that inserted the event in the Journal, the insertion date, the type of event and the body (data) of the event in a JSON object. To model a journal, we just use a MongoDB collection where we only insert new documents (events). To keep the insertion order of events, an id of type PathId is serialized
