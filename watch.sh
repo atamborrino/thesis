@@ -1,4 +1,8 @@
 #!/bin/sh
 cd src/
-rm parts/*.aux
-latex-watcher -c pdflatex,bibtex,pdflatex,pdflatex -t main.tex -b main
+#rm parts/*.aux
+pdflatex -shell-escape main
+bibtex8 main
+pdflatex -shell-escape main
+pdflatex -shell-escape main
+open main.pdf

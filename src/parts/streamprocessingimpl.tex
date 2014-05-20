@@ -86,7 +86,7 @@ object PathId {
 \end{listing}
 
 
-\subsection{Stream processors}
+\subsection{Processors}
 
 A stream processor is composed of one Iteratee in input of N Enumerators in output (one per child). 
 In order to link the Iteratee with the Enumerators, we use Promise to be able to complete manually a Future, and Scala STM to handle concurrent access. 
@@ -108,19 +108,180 @@ a promise to be called when a new event will come in, and we put the Future link
 If it is Late, we call the since method the retrieve the past events from the sinceId parameter. If the processor is a persistent stream processor,
 it will directly take the past event streams from its MongoDB local journal and returns an Enumerator of it using the ReactiveMongo reactive driver. If the processor is
 a side-effect stream processor, it will ask its parent for the past event streams, removing the last node of the path id and then filtering the substream via an offset (as explained in the architecture part). 
+Figure \ref{fig:createOutStream} illustrates this mechanism. 
 
-Figure \ref{fig:createOutStream} illustrates this mechanism. Listing \ref{lst:processor} shows the code of the generic stream processor. Listing \ref{lst:psprocessor} shows the code of persistent stream processor and side-effect stream processor. 
+\begin{figure}
+  \begin{center} 
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/createOutStream.png}}
+    \caption{Processor implementation flow}
+    \label{fig:createOutStream}
+  \end{center}
+\end{figure}
+
+In order to share the Maps of Promises and States between the input Iteratee and the output Enumerators (so several concurrent threads), we use Scala STM (Software Transactional Memory) \footfullcite{bib:scalastm}. In a few word, a STM is an optimistic approach to concurrency that let all operations on a shared data structure to be done in parallel. An operation must be committed when it is finished. If there was another commit from another operation during this operation, the operation is aborted (rollback) and tried again. 
+Using java.util.concurrent.ConcurrentHashMap is roughly equivalent.
+
+Listing \ref{lst:processor} shows the code of the generic stream processor. Listing \ref{lst:psprocessor} shows the code of persistent stream processor and side-effect stream processor. 
+\newpage
+
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+// State for each consumer
+sealed trait State
+case object UpToDate extends State
+case object WaitingForDownStreamAck extends State
+case object Late extends State
+
+trait Source[E] {
+  def createOutStream(sinceId: PathId): Enumerator[E]
+  def since(id: PathId, included: Boolean = false): Enumerator[E]
+  def batchQuery(query: JsObject): Enumerator[E] = Enumerator.empty // TOOD: remove default
+}
+
+abstract class StreamProcessor[I, O](implicit ec: ExecutionContext, ei: Evented[I], eo: Evented[O])
+   extends Source[O] {
+  import scala.concurrent.stm._
+  
+  def since(id: PathId, included: Boolean = false): Enumerator[O]
+  def process(event: I): Enumerator[O]
+  def performAtomicSideEffect(event: O): Future[Unit]
+  def getLastProcessedEventId(): Future[PathId]
+  
+  /*
+   * Internals
+   */
+
+  val consumersTrigger = Ref(Map.empty[String, Promise[Option[O]]])
+  val consumersState = Ref(Map.empty[String, State])
+
+  def processor: Enumeratee[I, O] = {
+    Enumeratee.mapFlatten[I](inEvent => process(inEvent) &> updatePathId)
+  }
+
+  def effector: Enumeratee[O, O] = {
+    Enumeratee.mapM[O](outEvent => performAtomicSideEffect(outEvent) map (_ => outEvent))
+  }
+
+  def downstreamTrigger: Iteratee[O, Unit] =
+    Iteratee.foreach[O] { outEvent =>
+      consumersState.single transform { prev =>
+        prev mapValues {
+          case UpToDate => WaitingForDownStreamAck
+          case WaitingForDownStreamAck => Late
+          case Late => Late
+        }
+      }
+
+      val promisesToTrigger = consumersTrigger.single.swap(Map.empty)
+      promisesToTrigger foreach { case (_, promise) =>
+        promise.trySuccess(Some(outEvent))
+      }
+    }
+
+  def inStreamSink: Iteratee[I, Unit] = {
+    processor ><> effector &>> downstreamTrigger
+  }
+
+  def createOutStream(sinceId: PathId): Enumerator[O] = {
+    val consumerId = java.util.UUID.randomUUID().toString
+    consumersState.single transform (prev => prev + (consumerId -> Late))
+
+    StreamProcessorHelper.unfoldPathId(sinceId) { currentId =>
+      val longPollingTrigger = promise[Option[O]]
+      consumersTrigger.single.getAndTransform(prev => prev + (consumerId -> longPollingTrigger))
+
+      consumersState.single.get.apply(consumerId) match {
+        case WaitingForDownStreamAck | UpToDate =>
+          // we are up to date with upstream, no need to pull from source
+          consumersState.single.transform(prev => prev + (consumerId -> UpToDate))
+          longPollingTrigger.future map { maybeEvent =>
+            maybeEvent map (event => Some(currentId, Enumerator(event))) getOrElse 
+              Some(currentId, Enumerator.empty[O])
+          }
+
+        case Late =>
+          StreamProcessorHelper.headOption(since(currentId)) flatMap {
+            case (None, _) =>
+              // we don't have anything more to poll
+              consumersState.single.transform(prev => prev + (consumerId -> UpToDate))
+              longPollingTrigger.future map { maybeEvent =>
+                maybeEvent map (event => Some(currentId, Enumerator(event))) getOrElse 
+                  Some(currentId, Enumerator.empty[O])
+              }
+
+            case (Some(event), remainingEnum) =>
+              // ignore promise
+              consumersTrigger.single.getAndTransform(prev => prev - consumerId)
+              // send next events
+              Future.successful(Some(currentId, Enumerator(event) andThen remainingEnum))
+          }
+      }
+    }
+  }
+
+  def updatePathId: Enumeratee[O, O] = StreamProcessorHelper.mapWithCounter { (outEvent, n) =>
+    val oldId = eo.getId(outEvent)
+    val newId = oldId.copy(path = oldId.path :+ n)
+    eo.updateId(outEvent, newId)
+  }
+}
+\end{minted}
+\captionof{listing}{Processor implementation\label{lst:processor}}
+
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+abstract class StreamProcessorWithReplayableSource[I, O]
+  (implicit ec: ExecutionContext, ei: Evented[I], eo: Evented[O]) extends StreamProcessor[I, O] {
+
+  val source: Source[I]
+
+  def realtime(sinceId: PathId): Unit = {
+    // restart the processor in case of failure
+    def loopRestart(futIt: Future[Iteratee[I, Unit]]): Future[Iteratee[I, Unit]] = {
+      futIt flatMap { _ =>
+        getLastProcessedEventId() flatMap { lastId =>
+          loopRestart(source.createOutStream(lastId) |>> inStreamSink)
+        }
+      }
+    }
+
+    loopRestart(source.createOutStream(sinceId) |>> inStreamSink)
+  }
+
+  def start(): Future[Unit] = {
+    for {
+      sinceId <- getLastProcessedEventId()
+    } yield realtime(sinceId)
+  }
+
+}
+
+abstract class SideEffectStreamProcessor[I, O](implicit ec: ExecutionContext,
+    ei: Evented[I], eo: Evented[O]) extends StreamProcessorWithReplayableSource[I, O] {
+
+  def since(id: PathId, included: Boolean = false): Enumerator[O] = {
+    val ancestors = id.path.dropRight(1)
+
+    val offset =
+      if (id == PathId.min) 0
+      else id.path.lastOption.getOrElse(0) + (if (included) 0 else 1)
+
+    source.since(PathId(id.rootEvent, ancestors), included = true) &>
+    processor &>
+    Enumeratee.drop[O](offset)
+  }
+}
+
+abstract class PersistentStreamProcessor[I, O](implicit ec: ExecutionContext, 
+    ei: Evented[I], eo: Evented[O]) extends StreamProcessorWithReplayableSource[I, O] {
+
+  def collection: JSONCollection
+  def performAtomicSideEffect(event: O): Future[Unit] = 
+    collection.insert(eo.serialize(event)) map (_ => ())
+}
+\end{minted}
+\captionof{listing}{Persistent processor and side-effect processor implementation\label{lst:psprocessor}}
+
 
 \subsection{Journal}
-
-
-
-
-
-
-
-
-
 
 
 
