@@ -137,6 +137,12 @@ trait Source[E] {
   def batchQuery(query: JsObject): Enumerator[E] = Enumerator.empty // TOOD: remove default
 }
 
+trait Evented[A] {
+  def getId(a: A): PathId
+  def updateId(a: A, id: PathId): A
+  def serialize(a: A): JsObject
+}
+
 abstract class StreamProcessor[I, O](implicit ec: ExecutionContext, ei: Evented[I], eo: Evented[O])
    extends Source[O] {
   import scala.concurrent.stm._
@@ -335,4 +341,128 @@ abstract class Journal[E](implicit ec: ExecutionContext, eo: Evented[E])
 \caption{Journal implementation}
 \label{lst:journalimpl}
 \end{listing}
+
+
+\subsection{Distribution}
+
+Implementing point-to-point distribution is very easy thanks to Play Framework's helper to transform an Enumerator into an HTTP Stream and HTTP Stream into an Iteratee.
+
+Basically, a parent processor can expose HTTP end-points for 2 functions: \verb|createOutStream| that push the infinite stream, and \verb|since| that allows child side-effect processors to ask for replay of past events.
+\verb|createOutStream| can be mapped to an URL like \verb|/stream?pathId=<PATH_ID>| where PathId is the start point of the stream (non-included).
+\verb|since| can be mapped to \verb|/since?pathId=<PATH_ID>&included=<BOOLEAN>| where PathId is the start point of the stream and included a boolean stating if we want the event
+corresponding to PathId to be replayed. Contrary to \verb|createOutStream|, the since HTTP Stream is not infinite: it finishes when there is no more event to replay.
+Listing \ref{lst:remoteparent} shows the implementation of such HTTP interface.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+object ProcessorHTTPInterface extends Controller {
+  def stream(sinceId: String) = Action {
+    val pathId = PathId.deserialize(sinceId)
+    val enum = processor.createOutStream(pathId) &> Enumeratee.map(Json.toJson(_))
+    Ok.chunked(enum)
+  }
+
+  def since(sinceId: String, included: Boolean) = Action {
+    val pathId = PathId.deserialize(sinceId)
+    val enum = processor.since(pathId, included) &> Enumeratee.map(Json.toJson(_))
+    Ok.chunked(enum andThen Enumerator.eof)
+  }
+}
+\end{minted}
+\caption{Distributed processors: HTTP interface of a parent processor}
+\label{lst:remoteparent}
+\end{listing}
+
+Concerning the child processor that has a remote parent, it must declare a remote source of type Source that can be transparently plugged into the StreamProcessor class. Listing \ref{lst:remotechild} shows the implementation of a remote source.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+class RemoteParentProcessor extends Source[ZEvent] {
+  val remoteParentUrl = "http://localhost:9001"
+
+  def createOutStream(sinceId: PathId): Enumerator[ZEvent] = {
+    val serializedId = PathId.serialize(sinceId)
+    val url = s"$remoteParentUrl/stream?sinceId=$serializedId"
+    getHttpStream(url)
+  }
+
+  def since(sinceId: PathId, included: Boolean = false) = {
+    val serializedId = PathId.serialize(sinceId)
+    val url = s"$remoteParentUrl/since?sinceId=$serializedId&included=$included"
+    getHttpStream(url)
+  }
+
+  private def getHttpStream(url: String): Enumerator[ZEvent] = {
+    val (it, enum) = Concurrent.joined[Array[Byte]]
+    WS.url(url).get(_ => it).flatMap(_.run)
+    enum &> Enumeratee.mapInput {
+      case Input.El(chunk) =>
+        val tryJs = Try(Json.parse(chunk))
+        tryJs match {
+          case Success(js) =>
+            js.validate[ZEvent] map { ev =>
+              Input.El(ev)
+            } getOrElse {
+              Input.Empty
+            }
+
+          case Failure(err) =>
+            logger.error("Failure during json parsing", err)
+            Input.Empty
+        }
+
+      case Input.Empty => Input.Empty
+      case Input.EOF => Input.EOF
+    }
+  }
+}
+\end{minted}
+\caption{Distributed processors: Remote source implementation of a child processor}
+\label{lst:remotechild}
+\end{listing}
+
+Composability of Enumerators / Iteratees makes the distribution very easy (almost location transparent). Moreover, as explained in the architecture part, this code maintains
+back-pressure with TCP-level ACK, which is very efficient.
+
+
+\subsection{Example application}
+
+The example application described in the architecture part has been implemented. The major part of the code is business specific and therefore will not be part of the report, but as an example Listing \ref{lst:exampleappimpl} shows the implementation of the FlatSnapshot side-effect processor.
+
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+object FlatSnapshot extends SideEffectStreamProcessor[ZEvent, ZEvent] with FlatSnapshotQuery {
+  def collection = ReactiveMongoPlugin.db.collection[JSONCollection]("flat_snapshots")
+
+  val logger: LazyLogger = LazyLogger.apply("api.FlatSnapshot")
+  
+  val source = Snapshot
+  
+  def getLastProcessedEventId(): Future[PathId] = {
+    collection.find(Json.obj(), Json.obj(
+      "_lastUpdateByEvent" -> 1)).sort(
+      Json.obj("_lastUpdateByEvent" -> -1)).one[JsObject].map(_.flatMap { json =>
+        (json \ "_lastUpdateByEvent").asOpt[PathId]
+      }.getOrElse(PathId.min))
+  }
+  
+  def process(event: ZEvent): Enumerator[ZEvent] = Enumerator(event)
+  
+  def performAtomicSideEffect(event: ZEvent): Future[Unit] = {
+    val snapshot = ZSnapshot(event)
+    if (!(event.body \ "archived").asOpt[Boolean].isEmpty) {
+      FlatSnapshot.collection.remove(Json.obj("_id" -> snapshot.id)) map (_ => ())
+    } else {
+      FlatSnapshot.collection.save(ZSnapshot(event)) map (_ => ())
+    }
+  }
+
+}
+\end{minted}
+\caption{Implementation of the FlatSnapshot side-effect processor}
+\label{lst:exampleappimpl}
+\end{listing}
+
+
+
 
