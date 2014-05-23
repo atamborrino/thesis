@@ -213,8 +213,25 @@ to model asynchronous non-blocking \textit{streams}.
 
 \subsection{Promises}
 \label{sec:promises}
+A promise is an abstraction that can be seen as a Writable Future. One can create a Promise, and get a Future from it. Then, when one call the method promise.success(value),
+the related Future is fulfilled asynchronously with this value. Listing \ref{lst:promiseexample} illustrates the use of Promises. 
 
-TODO
+\begin{listing}[h]
+\begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
+val promise1 = promise[Int]
+val future1 = promise1.future
+
+val future2 = future1 map (value => value + 1) // future2 will eventually contain the value 2
+
+// ...
+
+promise1.success(1) // triggering future1 with the value 1
+\end{minted}
+\caption{Promises in Scala}
+\label{lst:promiseexample}
+\end{listing}
+
+Promises can for example be used to let communicate a consumer and a producer as we will see in the Stream Processing architecture and implementation chapter.
 
 \section{Iteratees}
 \label{sec:iteratees}
