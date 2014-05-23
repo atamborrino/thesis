@@ -43,16 +43,16 @@
 }
 
 
-\title{A Reactive platform for Data Integration and Event Stream Processing}
+\title{A Real-Time Reactive platform for Data Integration and Event Stream Processing}
 
-\subtitle{Duis autem vel eum iruire dolor in hendrerit in
-          vulputate velit esse molestie consequat, vel illum
-          dolore eu feugiat null}
-\foreigntitle{Lorem ipsum dolor sit amet, sed diam nonummy nibh eui
-              mod tincidunt ut laoreet dol}
-\author{Namn Namnet}
-\date{November 2003}
-\blurb{Master's Thesis at NADA\\Supervisor: Tjoho\\Examiner: Tjohej}
+% \subtitle{Duis autem vel eum iruire dolor in hendrerit in
+%           vulputate velit esse molestie consequat, vel illum
+%           dolore eu feugiat null}
+% \foreigntitle{Lorem ipsum dolor sit amet, sed diam nonummy nibh eui
+%               mod tincidunt ut laoreet dol}
+\author{Alexandre Tamborrino}
+\date{June 2014}
+\blurb{Master's Thesis at Zengularity, examined by KTH ICT\\Supervisor: Antoine Michel\\Examiner: Vladimir Vlassov}
 \trita{TRITA xxx yyyy-nn}
 \begin{document}
 \frontmatter
@@ -62,35 +62,27 @@
 \selectlanguage{english}
 
 \begin{abstract}
-  This is a skeleton for KTH theses. More documentation
-  regarding the KTH thesis class file can be found in
-  the package documentation.
-
-Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Mauris
-purus. Fusce tempor. Nulla facilisi. Sed at turpis. Phasellus eu
-ipsum. Nam porttitor laoreet nulla. Phasellus massa massa, auctor
-rutrum, vehicula ut, porttitor a, massa. Pellentesque fringilla. Duis
-nibh risus, venenatis ac, tempor sed, vestibulum at, tellus. Class
-aptent taciti sociosqu ad litora torquent per conubia nostra, per
-inceptos hymenaeos.
+In this thesis is presented a Real-time Reactive platform for Data Integration and Event Stream processing. 
+Real-time means that data changes in data sources must be pulled and propagated as events across the platform in seconds. Using the Event-Sourcing principle, the Stream Processing part is a Tree-like structure of event-sourced stream processors where a processor can subscribe to a parent processor, react in various ways to events and send a derived stream of events to child processors. A processor can for example maintain a pre-computed view of aggregated data (dashboards) that is incrementally updated in real-time upon the reception of certain kinds of events.
+Reactive means that an asynchronous non-blocking architecture is used with an adaptive push-pull stream processing model with back-pressure to maximize performance and minimize resource consumption.
 \end{abstract}
-
 \clearpage
 
-\begin{foreignabstract}{swedish}
-  Denna fil ger ett avhandlingsskelett.
-  Mer information om \LaTeX-mallen finns i
-  dokumentationen till paketet.
+% \begin{foreignabstract}{swedish}
+%   Denna fil ger ett avhandlingsskelett.
+%   Mer information om \LaTeX-mallen finns i
+%   dokumentationen till paketet.
 
-Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Maurisd
-purus. Fusce tempor. Nulla facilisi. Sed at turpis. Phasellus eu
-ipsum. Nam porttitor laoreet nulla. Phasellus massa massa, auctor
-rutrum, vehicula ut, porttitor a, massa. Pellentesque fringilla. Duis
-nibh risus, venenatis ac, tempor sed, vestibulum at, tellus. Class
-aptent taciti sociosqu ad litora torquent per conubia nostra, per
-inceptos hymenaeos.
-\end{foreignabstract}
-\clearpage
+% Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Maurisd
+% purus. Fusce tempor. Nulla facilisi. Sed at turpis. Phasellus eu
+% ipsum. Nam porttitor laoreet nulla. Phasellus massa massa, auctor
+% rutrum, vehicula ut, porttitor a, massa. Pellentesque fringilla. Duis
+% nibh risus, venenatis ac, tempor sed, vestibulum at, tellus. Class
+% aptent taciti sociosqu ad litora torquent per conubia nostra, per
+% inceptos hymenaeos.
+% \end{foreignabstract}
+% \clearpage
+
 \tableofcontents*
 
 \mainmatter
