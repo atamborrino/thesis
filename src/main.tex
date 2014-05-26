@@ -63,7 +63,7 @@
 
 \begin{abstract}
 In this thesis is presented a Real-time Reactive platform for Data Integration and Event Stream processing. 
-Real-time means that data changes in data sources must be pulled and propagated as events across the platform in seconds. Using the Event-Sourcing principle, the Stream Processing part is a Tree-like structure of event-sourced stream processors where a processor can subscribe to a parent processor, react in various ways to events and send a derived stream of events to child processors. A processor can for example maintain a pre-computed view of aggregated data (dashboards) that is incrementally updated in real-time upon the reception of certain kinds of events.
+Real-time means that data changes in data sources must be pulled and propagated as events across the platform in seconds. Based on the Event-Sourcing principle, the Stream Processing part is a Tree-like structure of event-sourced stream processors where a processor can subscribe to a parent processor, react in various ways to events sent by its parent and send a derived stream of events to child processors. A processor can for example maintain a pre-computed view of aggregated data (dashboards) that is incrementally updated upon the reception of certain kinds of events in real-time.
 Reactive means that an asynchronous non-blocking architecture is used with an adaptive push-pull stream processing model with back-pressure to maximize performance and minimize resource consumption.
 \end{abstract}
 \clearpage
