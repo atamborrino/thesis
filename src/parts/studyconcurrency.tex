@@ -379,8 +379,7 @@ An actor system is a higher level abstraction to deal with concurrency, states a
 via message passing. It enables simple fault-tolerance and distribution.
 \\
 
-An actor is a lightweight concurrent entity. Basically, an actor receives messages from other actors and send messages to other actors. Upon the reception of 
-a message, it can modify its internal state, send messages to other actors, and change its message handling behavior of the next messages.
+An actor is a lightweight concurrent entity which has very cheap creation cost (far cheaper than a thread). Basically, an actor receives messages from other actors and send messages to other actors. Upon the reception of a message, it can modify its internal state, send messages to other actors, and change its message handling behavior of the next messages.
 Each actor has one mailbox that corresponds to a FIFO queue of incoming messages.
 It is guaranteed that message processing is sequential and thread-safe inside a same actor, i.e one should not have to worry about concurrency problems inside an actor when modifying its internal state. Listing
 \ref{lst:actorexample} shows how to define a simple Actor that counts the number of messages it receives. Messages can be sent to him concurrently without worrying

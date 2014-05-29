@@ -43,7 +43,7 @@
 }
 
 
-\title{A Real-Time Reactive platform for Data Integration and Event Stream Processing}
+\title{A Real-Time Reactive platform for Data Integration and Stream Processing}
 
 % \subtitle{Duis autem vel eum iruire dolor in hendrerit in
 %           vulputate velit esse molestie consequat, vel illum
@@ -62,9 +62,9 @@
 \selectlanguage{english}
 
 \begin{abstract}
-In this thesis is presented a Real-time Reactive platform for Data Integration and Event Stream processing. 
-Real-time means that data changes in data sources must be pulled and propagated as events across the platform in seconds. Based on the Event-Sourcing principle, the Stream Processing part is a Tree-like structure of event-sourced stream processors where a processor can subscribe to a parent processor, react in various ways to events sent by its parent and send a derived stream of events to child processors. A processor can for example maintain a pre-computed view of aggregated data (dashboards) that is incrementally updated upon the reception of certain kinds of events in real-time.
-Reactive means that an asynchronous non-blocking architecture is used with an adaptive push-pull stream processing model with back-pressure to maximize performance and minimize resource consumption.
+In this thesis is presented a Real-time Reactive platform for Data Integration and Stream Processing. The platform allows to define data pullers that incrementally pull data changes from REST data sources and propagates them as streams of immutable events across the system according to the Event-Sourcing principle. The Stream Processing part is a Tree-like structure of event-sourced stream processors where a processor can react in various ways to events sent by its parent and send derived sub-streams of events to child processors. A processor use case is maintaining a pre-computed view on aggregated data, which allows to define low read latency business dashboards that are updated in real-time.
+The platform follows the Reactive architecture principles to maximize performance and minimize resource consumption using an asynchronous non-blocking architecture with an adaptive push-pull stream processing model with automatic back-pressure. Moreover, the platform uses functional programming abstractions to allow simple and composable asynchronous programming.
+
 \end{abstract}
 \clearpage
 
