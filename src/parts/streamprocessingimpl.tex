@@ -104,9 +104,9 @@ to the child).
 In the Enumerator corresponding to a child (the createOutStream method), when the code is called a new time (corresponding the ACK that previous events has been processed by the child in local mode,
 or that the events are at least in the TCP send buffer in distributed mode), we check the state of the child. If it is UpToDate or WaitingForDownStreamAck, we register
 a promise to be called when a new event will come in, and we put the Future linked to the promise into the Enumerator. This mechanism allows non-blocking long-polling.
-If it is Late, we call the since method the retrieve the past events from the sinceId parameter. If the processor is a persistent stream processor,
+If it is Late, we call the since method that retrieves the past events from the sinceId parameter. If the processor is a persistent stream processor,
 it will directly take the past event streams from its MongoDB local journal and returns an Enumerator of it using the ReactiveMongo reactive driver. If the processor is
-a side-effect stream processor, it will ask its parent for the past event streams, removing the last node of the path id and then filtering the substream via an offset (as explained in the architecture part). 
+a side-effect stream processor, it will ask its parent for the past event streams, removing the last node of the path id and then filtering the substream via an offset in order to remove the already processed sub-events (as explained in the architecture part). 
 Figure \ref{fig:createOutStream} illustrates this mechanism. 
 
 \begin{figure}
@@ -117,8 +117,8 @@ Figure \ref{fig:createOutStream} illustrates this mechanism.
   \end{center}
 \end{figure}
 
-In order to share the Maps of Promises and States between the input Iteratee and the output Enumerators (so several concurrent threads), we use Scala STM (Software Transactional Memory) \footfullcite{bib:scalastm}. In a few word, a STM is an optimistic approach to concurrency that let all operations on a shared data structure to be done in parallel. An operation must be committed when it is finished. If there was another commit from another operation during this operation, the operation is aborted (rollback) and tried again. 
-Using java.util.concurrent.ConcurrentHashMap is roughly equivalent.
+In order to share in a thread-safe way the Maps of Promises and States between the input Iteratee and the output Enumerators (so several concurrent threads), we use Scala STM (Software Transactional Memory) \footfullcite{bib:scalastm}. In a few words, a STM is an optimistic approach to concurrency that let all operations on a shared data structure to be done in parallel. An operation must be committed when it is finished. If there was another commit from another operation during this operation, the operation is aborted (rollback) and tried again. 
+Using java.util.concurrent.ConcurrentHashMap is roughly equivalent for our use case.
 
 Listing \ref{lst:processor} shows the code of the generic stream processor. Listing \ref{lst:psprocessor} shows the code of persistent stream processor and side-effect stream processor. 
 \newpage
@@ -288,7 +288,7 @@ abstract class PersistentStreamProcessor[I, O](implicit ec: ExecutionContext,
 
 \subsection{Journal}
 
-The Journal extends StreamProcessor but it differs from other processors by its way of handling input. Indeed, the Journal has multiple pushers (that pull from various data sources) that push events concurrently. To be sure to insert events with an increasing ordered id, we use Concurrent.broadcast that provides a channel to push events. Pushed events will go into an unique sequential pipeline that first creates a PathId for the event, and then insert this event with its PathId to MongoDB (this is done by the journalSink Iteratee). Listing \ref{lst:journalimpl} shows the code of the Journal.
+The Journal extends the StreamProcessor class but it differs from other processors by its way of handling input. Indeed, the Journal has multiple pushers (that pull from various data sources) which push events concurrently. To be sure to insert events with an increasing ordered id, we use Concurrent.broadcast that provides a channel to push events. Pushed events will go into an unique sequential pipeline that first creates a PathId for the event, and then inserts this event with its PathId to MongoDB (this is done by the journalSink Iteratee). Listing \ref{lst:journalimpl} shows the code of the Journal.
 
 \begin{listing}[h]
 \begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
@@ -344,13 +344,13 @@ abstract class Journal[E](implicit ec: ExecutionContext, eo: Evented[E])
 
 \subsection{Distribution}
 
-Implementing point-to-point distribution is very easy thanks to Play Framework's helper to transform an Enumerator into an HTTP Stream and HTTP Stream into an Iteratee.
+Implementing point-to-point distribution is very easy thanks to Play Framework's helpers to transform an Enumerator into a HTTP Stream and a HTTP Stream into an Iteratee.
 
 Basically, a parent processor can expose HTTP end-points for 2 functions: \verb|createOutStream| that push the infinite stream, and \verb|since| that allows child side-effect processors to ask for replay of past events.
 \verb|createOutStream| can be mapped to an URL like \verb|/stream?pathId=<PATH_ID>| where PathId is the start point of the stream (non-included).
 \verb|since| can be mapped to \verb|/since?pathId=<PATH_ID>&included=<BOOLEAN>| where PathId is the start point of the stream and included a boolean stating if we want the event
-corresponding to PathId to be replayed. Contrary to \verb|createOutStream|, the since HTTP Stream is not infinite: it finishes when there is no more event to replay.
-Listing \ref{lst:remoteparent} shows the implementation of such HTTP interface.
+corresponding to PathId to be replayed. Contrary to \verb|createOutStream|, the since HTTP Stream is not infinite: it finishes when there is no more event to replay (no long-polling mechanism).
+Listing \ref{lst:remoteparent} shows the implementation of such a HTTP interface.
 
 \begin{listing}[h]
 \begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
