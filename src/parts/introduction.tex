@@ -1,6 +1,6 @@
 \chapter{Introduction and system overview}
 
-Data is now at the center of organizations and is increasingly heterogeneous, meaning that there is an explosion of data sources 
+Data is now at the center of organizations and is increasingly heterogeneous with an explosion of data sources 
 that each exposes data in its own format that can be structured, semi-structured or non-structured.
 Another major trend is that data processing needs to be real-time, because managers no longer want to wait a whole day 
 to have reports and alerts on their business data.
@@ -8,7 +8,7 @@ to have reports and alerts on their business data.
 
 To achieve these requirements, traditional monolithic Data Wharehouse softwares start to be out-dated. They often
 propose to deal with only structured data to map it in a relational model, and are often batch-oriented: 
-the ETL mechanism (data extraction, transform and load) regularly happen once or twice day, and there is no mechanism 
+the ETL mechanism (data extraction, transform and load) regularly happen once or twice per day, and there is no mechanism 
 for real-time subscriptions of new events happening on the data as highlighted by Jay Kreps, principal staff engineer at LinkedIn \footfullcite{bib:linkedinLog}.
 \\
 
@@ -87,7 +87,7 @@ events (data changes) to the Journal.
 Nonetheless, this kind of evented architecture must be done with a lot of care concerning technical architecture.
 The platform needs to do lot of IO in order to push the stream of events from data sources to data consumers, and must
 parallelize a lot of operations. Moreover, it must ensure that the stream of events (producers) does not overwhelm the stream
-processors (consumers), i.e if consumers process data slowly, producers must try to slow the push rate. The platform should also deal with possible
+processors (consumers), i.e. if consumers process data slowly, producers must try to slow the push rate. The platform should also deal with possible
 failure of components and offer strong guarantees on these cases (like no message loss or duplication).
 
 In order to fulfill those requirements, the platform will apply the principles of the Reactive Manifesto \footfullcite{bib:reactiveManifesto} in order to guarantee

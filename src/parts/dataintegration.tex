@@ -28,7 +28,7 @@ corresponds to an incremental pull from a certain data source). Once the child a
 
 The JobScheduler must handle the fact that the job message rate for a data source can be faster than the incremental pull
 of this data source (for example if the data source has produced a lot of new data since the last pull, or if it experiences some network problems). If a pull is still running when 
-a new job message arrives for a resource type of a data source, the JobScheduler should ignore the new pull message to avoid doing two or more pull in parallel of the same resource and risking a wrong
+a new job message arrives for a resource type of a data source, the JobScheduler should ignore the new pull message to avoid doing two or more pulls in parallel of the same resource and risking a wrong
 order of events. The JobScheduler can do this by assigning to the actor the name of the resource and data source when it spawns a new worker child. Then, when a new job message comes in, it checks if it has a child of this name, and only if such child doesn't exist it spawns a new child.
 
 The actor model also allows to deal with errors. In our case, we just want to ignore the failure of a child worker. The next top message for this data source will automatically
@@ -45,7 +45,7 @@ update event processed during the previous job. In order to persist for each job
 
 Moreover, for each resource, we are only interested in keeping the latest update. Indeed, the REST API only gives us the type of the update (create, update, delete) with the id of the resource, so if we pull (in descendant order) a delete event before an update event for a particular resource, we only want to retain the delete event.
 
-Then, the stream of events should be re-sorted in ascendant order, then for each event we must query the REST API to transform the resource id into the resource itself, then we must clean and validate the resulting JSON to transform it to a known data model, then create an event to insert into the Journal, and finally update MongoDB with the date of the last event.
+Then, the stream of events should be re-sorted in ascendant order, then for each event we must query the REST API to transform the resource id into the resource itself, then we must clean and validate the resulting JSON to transform it to a known data model, then insert the event into the Journal, and finally update MongoDB with the timestamp of this event.
 Figure \ref{fig:datintflow} illustrates this pipeline in a simple schema. 
 
 \begin{figure}[h]

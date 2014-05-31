@@ -11,25 +11,23 @@ An important problem that will solve the architecture is the fact that the Journ
 any parent node (Journal or processor) can have an output stream rate that is superior to the event processing time of one or several of its children. 
 Several simple \textit{push} solutions can be applied, but none of them were applicable for our system.
 
-First, any child can just have an in-memory buffer that stores the incoming events not yet processed. However, an in-memory buffer has obvious limitations like causing an OutOfMemory exception. Moreover, as said in the non-functional requirements part, one goal is to limit the RAM consumption of the platform. Thus, this solution is
-not applicable.
+First, any child can just have an in-memory buffer that stores the incoming events not yet processed. However, an in-memory buffer has obvious limitations like causing an OutOfMemory exception if the child can not handle the flow rate and start queuing a lot of events. Moreover, as said in the non-functional requirements part, one goal is to limit the RAM consumption of the platform. Thus, this solution is not applicable.
 
 Another solution can be for a parent node to wait that all its children have processed the current event to send the next one via an ACK mechanism. 
 An obvious issue of this approach is that
 the slowest child of a parent will slow down the event stream rate for all its siblings. This is clearly not acceptable for a scalable system with loose coupling 
-between components. Moreover, such a solution implies that the failure of a child stops the stream for its siblings, which is clearly not scalable.
+between components. Moreover, such a solution implies that the failure of a child stops the stream for its siblings, which is clearly not a fault-tolerant approach.
 
 As a reminder, no message loss is a requirement for the platform, so dropping the events if the stream rate is too fast is not an option.
 \\
 
 \subsection{Pull-based streaming with event-sourced processors}
 
-One suitable solution is to use a pull-model instead of a push-model. For each received event, a processor processes it to produce a substream, optionally do some
-side effects on the substream, and stores the events of this substream in a local journal. Thus, each processor maintains its own event journal, so each processor is \textit{event-sourced}.
+One suitable solution is to use a pull-model instead of a push-model. For each received event, a processor processes it to produce a substream and stores the events of this substream in a local journal as a side-effect. Thus, each processor maintains its own event journal, so each processor is \textit{event-sourced}.
 This allows each child to maintain a cursor on the journal of its parent pointing on the next event to pull. Thus, children can have totally different pulling and processing speeds, they are not coupled to each other. This approach of pull-based stream systems with decoupled multi-consumers using cursors comes from Apache Kafka, a distributed messaging system for log processing created at LinkedIn \footfullcite{bib:kafka}. 
 
-A common problem with pull based-system is the polling part. How can children know when the next event is ready to be pulled? The naive way to do this is to check every X seconds / milliseconds if the parent has a new event in its journal. This can waste a lot of resources when a parent has no new event for a while. The solution brought by Kafka is to 
-perform long-polling: when the child's cursor goes on the next event, either it pulls the next event if it exists or it blocks until a new event comes in to pull it. Thus, children do not have to pull periodically to know whether there is a new event.
+A common problem with pull-based system is the polling part. How can children know when the next event is ready to be pulled? The naive way to do this is to check every X seconds / milliseconds if the parent has a new event in its journal. This can waste a lot of resources when a parent has no new event for a while. The solution brought by Kafka is to 
+perform long-polling: when the child's cursor goes on the next event, either it pulls this next event if it exists or it blocks until a new event comes in to pull it. Thus, children do not have to pull periodically to know whether there is a new event.
 
 However, the term "blocks" does not really get along well with our reactive non-blocking architecture. We therefore have to find a way to implement long-polling without blocking
 threads. To do that, we will use the Promise abstraction described in section \ref{sec:promises}. Mixing Futures, Iteratees and Promises, we will be able to implement
@@ -40,25 +38,25 @@ into the document. MongoDB provides a built-in id generation mechanism that keep
 \\
 
 Thus, each event produced by a processor goes into its MongoDB local journal, and children pull events (one by one or by bulk) according to their cursor position in their parent
-local journal. If one or several of them is "up-to-date" with the last event of its parent, a long-polling mechanism allows to prevent them to waste resources periodically pulling their parent.
+local journal. If one or several of them are "up-to-date" with the last event of their parent, a long-polling mechanism allows to prevent them to waste resources periodically pulling their parent.
 
 However, this mechanism can be improved. For example, if a parent processor knows that one of its children is "up-to-date", it can directly send him the next event when it has just been created without passing by the persistent storage (in order to improve efficiency). This approach is described in section \ref{sec:adapativepushpull}.
 
 \subsection{Fault-tolerant persistent processors with exactly-once side-effect semantic using Path Ids}
 \label{sec:substreamproblem}
 
-Of course, a persistent storage on MongoDB allows fault-tolerance in case of a processor crashes and restarts. When a processor restarts, it checks in MongoDB what was the last id of the event it has successfully processed before crashing, and asks its parent for the next event after this id (it \textit{replays} the stream from where it crashed).
-However, if a processor crashes \textit{during} the processing of an event, how to know if it has successfully and entirely processed this event? What it means to process "entirely" an incoming event?
+Of course, a persistent storage on MongoDB allows fault-tolerance in case of a processor crashes and restarts. When a processor restarts, it checks in MongoDB what was the id of the latest output event it has successfully processed before crashing, and asks its parent for the next event after this id (it \textit{replays} the stream from where it crashed).
+However, if a processor crashes \textit{during} the processing of an event, how to know if it has successfully and entirely processed this event? What does it mean to process "entirely" an incoming event?
 \\
 
 First, we differentiate the \textbf{process} method and the \textbf{performAtomicSideEffect} method in a processor. As stated in the Requirement chapter, the process method 
 takes one event and produces a substream of events from it. Its signature is \verb|process(event: I): Enumerator[O]| where I is the type of input events and O the type
 of out events. As we saw in the previous parts, an Enumerator is a functional abstraction for a non-blocking stream producer. The function implementing the process interface
-should be pure, i.e should not have any side-effect. More precisely, it can have side-effects, but the call semantic of this function is \textit{at-least-once} for each 
+should be pure, i.e. should not have any side-effect. More precisely, it can have side-effects, but the call semantic of this function is \textit{at-least-once} for each 
 event, meaning that the same side-effect can be called several times. Thus, it is ok to have idempotent side-effects. However, for side-effects that are non-idempotent and
 thus requires \textit{exactly-once} semantic, one can use the performAtomicSideEffect method whose signature is \verb|performAtomicSideEffect(event: O): Future[Unit]|.
-The function is called for each output event of the created sub-stream and is guaranteed to be called exactly-once for each output event even in cases of failures. The
-Future[Unit] return type is a Future returning nothing (i.e a side-effect). The difference of returning Future[Unit] instead of simply returning Unit is that a side-effect
+The function is called for each output event of the created sub-stream and is guaranteed to be called exactly-once for each output event even in cases of processor failures. The
+Future[Unit] return type is a Future returning nothing (i.e. a side-effect). The difference of returning Future[Unit] instead of simply returning Unit is that a side-effect
 can be asynchronous but returning a Future of nothing allows us to known when this side-effect is finished. This enables to ensure sequentiality of side-effects (the side-effect
 of "out event 1" in the substream will be finished when the side-effect of "out event 2" begins).
 
@@ -94,7 +92,7 @@ will generate event 1-1-1, event 1-1-2, event 1-2-1, event 1-2-2, event 1-3-1 an
 We see that the generation of events has a tree-shape, and each event can be characterized by a path in this tree (for example, 1-2-1). The idea of PathId is to
 auto-generate these path ids when events pass through processors so that it is possible to re-climb the tree given a particular event.
 
-Concerning fault-tolerance, a child processor that recovers after a crash can check its last PathId, remove the last node "LastNode" of it and send it to its parent. Then, the parent send him the event that the child re-processes (re-creating the substream), and thanks to the number "LastNode" of the last node the child can know from where in the substream it crashed. The idea of id generation to be able to retrieve from a child event the parent event comes from Apache Storm, a distributed and fault-tolerant real-time computation framework \footfullcite{bib:storm}.
+Concerning fault-tolerance, a child processor that recovers after a crash can check its last PathId, remove the last node "LastNode" of it and send this path id to its parent. Then, the parent sends him the event that the child re-processes (re-creating the substream), and thanks to the number "LastNode" of the last node the child can know from where in the substream it crashed. The idea of id generation to be able to retrieve from a child event the parent event comes from Apache Storm, a distributed and fault-tolerant real-time computation framework \footfullcite{bib:storm}.
 
 The implementation part will explain in more details how these PathIds are serialized and deserialized in MongoDB.
 
@@ -140,7 +138,7 @@ a local journal, but it implies that event stream replays take longer because a 
 \label{sec:adapativepushpull}
 
 An important optimization can still be made to this model. For now, from a processor point of view, receiving input events and sending output events are totally
-decoupled tasks that are asynchronous between each others. For persistent processor, all input events are processed and the result substream is written to the local journal, and then children consumes events from this journal. For side-effect processor, it means that each time that a side-effect processor receives a new input, its children will be notified that there is a new event via the long-polling mechanism, but for the children to get this event via the cursor mechanism the processor has to ask again its parent independently for each child in order to replay the stream from this event (as it has no persistence). 
+decoupled tasks that are asynchronous between each others. For persistent processor, all input events are processed and the result substream is written to the local journal, and then children consume events from this journal. For side-effect processor, it means that each time that a side-effect processor receives a new input, its children will be notified that there is a new event via the long-polling mechanism, but for the children to get this event via the cursor mechanism the processor has to ask again its parent independently for each child in order to replay the stream from this event (as it has no persistence). 
 If the children were late in the stream, this is the only solution, but if the children were up-to-date in the stream, it would be way more performant to just send the processed out events directly to the children (for persistent processors also as it decreases the number of IO calls to the local journal).
 \\
 
@@ -160,6 +158,8 @@ Late means that the child is late in the stream, so there is no point sending hi
 In this case, the child will replay the stream at its rate. However, if it manages to catch-up with the real-time stream, its state will move to UpTodate.
 
 Figure \ref{fig:childstates} illustrates this as a state transition diagram.
+
+Thus, a processor adapts its stream strategy in real-time between push and pull to optimize performance and latency.
 
 \begin{figure}[h]
   \begin{center} 
@@ -185,7 +185,7 @@ built-in in the Iteratee concept. But how does this work in a distributed settin
 \subsubsection{Distributed processors with TCP-level back-pressure}
 
 A processor is composed of one Iteratee in input and several Enumerators in output (one per child). The pipeline composed by an Enumerator (source) and an Iteratee (sink) can
-be distributed via an HTTP chunked stream. An HTTP chunked stream is an unidirectional stream protocol that allows the producer (server) to maintain a connection with a client to send a possibly infinite number of chunks. An enumerator can be transformed very easily into a HTTP stream producer, and an Iteratee can be easily transformed in a HTTP stream client (more details in the Implementation part). Thus, processors can be distributed via HTTP streams on top of TCP.
+be distributed via an HTTP chunked stream. An HTTP chunked stream is a unidirectional stream protocol that allows the producer (server) to maintain a connection with a client to send a possibly infinite number of chunks. An enumerator can be transformed very easily into a HTTP stream producer, and an Iteratee can be easily transformed in a HTTP stream client (more details in the Implementation part). Thus, processors can be distributed via HTTP streams on top of TCP.
 \\
 
 By plugging Enumerators / Iteratees via an HTTP stream, one very interesting property is that the back-pressure mechanism remains by leveraging TCP's flow control mechanism. In a few words, if a client does not consume its receive TCP buffer, it will send an ACK message to the sender with a sliding window of size 0, meaning that it does not want more data for now, so the sender stops sending data (this is known as TCP's sliding window flow control protocol).
@@ -215,10 +215,9 @@ ignoring the Futures returned. However, in this case, there is no guarantee that
 
 \subsection{Example application}
 
-Using this generic stream processing library, an example application has been implemented to meet functional business requirements. The aim of this application is to
-maintain real-time dashboards on business data (sales, production, finance, ...). The read latency on data must be really low, so creating pre-computed dashboards that
-update themselves upon the receive of an event is an interesting approach. Moreover, upon the receive of some events, the platform should react by updating other external
-services.
+Using this generic stream processing library, an example application has also been implemented to meet functional business requirements. The aim of this application is to
+maintain real-time dashboards on business data (sales, production, finance, ...). Data read latency must be really low, so creating pre-computed dashboards that
+update themselves upon the reception of certain kinds of events is an interesting approach. Moreover, upon the reception of some events, the platform should react by updating other external services.
 \\
 
 Figure \ref{fig:exampleapp} shows the tree of processors used. 
@@ -234,12 +233,12 @@ Figure \ref{fig:exampleapp} shows the tree of processors used.
 Snapshot is a persistent processor that maintains the history of all resources (it contains all states of each resource). It takes journal events in input and return the current
 state of a resource in output. Its persistent nature allows other services to query its local journal to know past states of resources.
 
-Pusher is a side-effect processor responsible for updating other services upon the receive of particular events. Its side-effect is used to do an in-place update of the last PathId
+Pusher is a side-effect processor responsible for updating other services upon the reception of particular events. Its side-effect is used to do an in-place update of the last PathId
 it has seen.
 
 FlatSnapshot is side-effect processor that uses its side-effect to maintain a MongoDB view on the last state of each resource that is not deleted. Its process method is the identity function on the current state of a resource. 
 
-Dashboards are side-effect processors that use their side-effect to maintain aggregated views on various resources. They take the new current state of a resource as input,
+Dashboards are side-effect processors that use their side-effect to maintain pre-computed aggregation views on various resources. They take the new current state of a resource as input,
 and returns a substream of new updated aggregation lines as output.
 
 

@@ -12,11 +12,11 @@ will have a field name, address, ...).
 \\
 
 More specifically, the platform needs to integrate several data sources that expose REST APIs. Such APIs expose information
-concerning business data such as new sales information, new financial information, new production information...
+concerning business data such as new sales information, new financial information...
 Each time that a resource is modified in one of these data sources, the platform should detect this change, apply some data cleaning and transformation, create an 
 event from it and push it into the Journal.
 
-The problem with most REST APIs is that they are not evented, i.e they are pulled-based and not pushed-based. 
+The problem with most REST APIs is that they are not evented, i.e. they are pulled-based and not pushed-based. 
 One must sent an HTTP request to query new data each time they need to. There exists some techniques to stream data via HTTP 1.1 and the 
 Chunked Transfer Encoding, but the REST APIs that the platform needs to integrate do not expose such stream interface. 
 Thus, the architecture of this part needs to provide a way to perform incremental pull from data sources, and then transform
@@ -44,7 +44,7 @@ to define a tree a stream processors (see Figure \ref{fig:tree}), where the root
   \end{center}
 \end{figure}
 
-A stream processor receives events coming from its parent node. Upon the receive of an event, it can do one or several of these
+A stream processor receives events coming from its parent node. Upon the reception of an event, it can do one or several of these
 actions (see Figure \ref{fig:streamprocessor}):
 \begin{itemize}
   \item Creation of a sub-stream: the stream processor can transform a received event to a stream (several events), creating a sub-stream
@@ -85,8 +85,8 @@ can be a composition of asynchronous operations (like pulling from a database wi
 
 \subsection{Data Integration}
 
-The Data Integration part must be able to scale up easily. Scale up means that the puller should automatically make the best
-use possible of all cores available on a machine in order to parallelize the various pulls. The different parts of the puller 
+The Data Integration part must be able to scale up easily. Scale up means that the puller should automatically make the best possible
+use of all cores available on a machine in order to parallelize the various pulls. The different parts of the puller 
 should also be easily distributable in case of the load if too big for one machine to handle. 
 
 The puller should also be fault-tolerant, meaning that a failure and restart of the system should ensure that no event
