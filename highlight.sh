@@ -1,0 +1,1 @@
+pbpaste | highlight -O rtf --line-numbers --font-size 22 --font Inconsolata --src-lang scala | pbcopy

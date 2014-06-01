@@ -312,12 +312,9 @@ and static typing allows to do so easily, safely and clearly (see Listing \ref{l
 object FinancialSoftware {
   def job: Job = {
     val resourceType = "exampleResource"
-    val since = DateTime.now
-
-    val futureLastEventDate = getLastUpdate(resourceType)
-
-    val futureNbEventsInserted: Future[Int] = futureLastEventDate flatMap { lastEventDate =>
-      retrieveUpdates("resourceType1", since) &>
+    
+    val futureNbEventsInserted: Future[Int] = getLastUpdate(resourceType) flatMap { lastEventDate =>
+      retrieveUpdates(resourceType, lastEventDate) &>
       groupByDocumentIdKeepingHeadEvent &>
       reorder &>
       getDocument(resourceType) &>
