@@ -58,14 +58,31 @@ thus requires \textit{exactly-once} semantic, one can use the performAtomicSideE
 The function is called for each output event of the created sub-stream and is guaranteed to be called exactly-once for each output event even in cases of processor failures. The
 Future[Unit] return type is a Future returning nothing (i.e. a side-effect). The difference of returning Future[Unit] instead of simply returning Unit is that a side-effect
 can be asynchronous but returning a Future of nothing allows us to known when this side-effect is finished. This enables to ensure sequentiality of side-effects (the side-effect
-of "out event 1" in the substream will be finished when the side-effect of "out event 2" begins).
+of "out event 1" in the substream will be finished when the side-effect of "out event 2" begins). Figure \ref{fig:pull_processors} illustrates the notion of pull-based processors.
+
+\begin{figure}[h]
+  \begin{center} 
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/pull_processors.png}}
+    \caption{Pull-based streaming}
+    \label{fig:pull_processors}
+  \end{center}
+\end{figure}
 
 With these two functions, fault-tolerance is handled in a clear manner. process is an user-defined function that is the logic of the processor: how to derive one input event to a substream of out events. As a pure function, it is not a problem if it is called several times for the same input. performAtomicSideEffect is then used on each out event to
-store it in a local journal. This operation must me \textit{atomic}. Thus, if a processor crashes, when it recovers it just takes the last out event id "LastID" from its local journal and asks its parent for the event that generated the substream containing this out event. The parent re-sends this event which is put again in the process method (at-least-once call semantic).
-This process method re-creates the substream, and a filter is put on the substream to take only the out events that are \textit{after} the original "LastID" output event. This
-filtered substream is then given to the performAtomicSideEffect method that goes on storing events in the local journal as usual.
+store it in a local journal. This operation must me \textit{atomic}. Thus, if a processor crashes, when it recovers it just takes the last out event id "LastID" from its local journal and asks its parent for the event that generated the substream containing this out event. The parent re-sends this event which is put again in the process method (at-least-once call semantic). This process method re-creates the substream, and a filter is put on the substream to take only the out events that are \textit{after} the original "LastID" output event. This
+filtered substream is then given to the performAtomicSideEffect method that goes on storing events in the local journal as usual. Figure \ref{fig:pull_processors_tolerance} illustrates
+the fault-tolerance of event-sourced pull-based processors. TODO EXPLAIN IMAGE
+
+\begin{figure}[h]
+  \begin{center} 
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/pull_processors_tolerance.png}}
+    \caption{Fault-tolerance in event-sourced pull-based processors}
+    \label{fig:pull_processors_tolerance}
+  \end{center}
+\end{figure}
+
 Thus, we have ensured no message loss, no message duplication and guaranteed message ordering in cases of processor crashes. It is easy to see why the "insert in journal" operation in performAtomicSideEffect needs to be atomic: if it is not (say it has 2 steps), if the processor fails between step 1 and step 2, we are in a position where
-we don't know if the current out event has been inserted or not where the processor recovers. 
+we don't know if the current out event has been inserted or not where the processor recovers.
 
 This atomicity leads to a potential problem: if we already use the performAtomicSideEffect for inserting output events in the journal, there is no room left for an arbitrary side-effect that can be defined by the user of the library. This is why we define two kinds of processors: \textit{persistent} processors where the performAtomicSideEffect is already implemented to insert output events in a local journal (the type of processor described in this section), and \textit{side-effect} processors that allows to define
 an arbitrary atomic side-effect. Side-effect processors will be described in details in section \ref{sec:sideeffectproc}.
@@ -98,59 +115,21 @@ The implementation part will explain in more details how these PathIds are seria
 
 The ability of re-climbing the generational tree is also very useful for side-effect stream processors that are described in the next section.
 
-\subsection{Side-effect stream processors}
-\label{sec:sideeffectproc}
-
-Persistent processors use their performAtomicSideEffect method to insert the generated out events in their local journal. We saw that a persistent processor can only do one
-atomic side-effect per out event in order to guarantee exactly-once side-effect semantic even in cases of failure.
-
-Thus, we define another type of processor where one can implement an arbitrary side-effect in the performAtomicSideEffect method: side-effect processor. The contract
-for this side-effect is that it has to be atomic if one wants to have the exactly-once side-effect semantic, and moreover the side-effect of an out event should store
-its PathId somewhere to be able to retrieve it when it recovers. Note that this is not the same than inserting the event in a journal as in persistent processors:
-here we only need to store the PathId, not the entire event. Upon a recover, a method getLastProcessedEventId of signature 
-\verb|getLastProcessedEventId(): Future[PathId]| is able to retrieve the last PathId processed to initiate the recover mechanism explained in the previous section.
-\\
-
-Thus, side-effect processors do not store the whole list of events but only the latest PathId processed. It brings a problem if a child of a side-effect processor
-wants to replay past events (because it is slow or because it crashed). To solve this, side-effect processors ask their own parent to replay the stream of events.
-This is a recursive call until the nearest parent processor that is persistent which is the tree root (Journal) in the worst case. 
-
-Moreover, each intermediate side-effect processor in this recursive call must take care of sending only the minimal amount of messages in substreams. Indeed,
-as we re-climb the generational PathId tree, each event sent by a parent is put in the process method of its child that generates the substream. We must just send
-events of this substream from a certain event because all events generated from previous events of the substream have already been processed by the original side-effect processor asking for a stream replay. 
-Figure \ref{fig:sideeffectreclimb} illustrates this mechanism. If side-effect processor fails just after the processing of event 1-2-1, it will ask persistent processor to replay the stream from event 1-2 as it is a side-effect processor with no local journal. Persistent processor replays the stream from its local journal since event 1-2. Side-effect processor receives event 1-2 and must call process(event 1-2) to
-produces the substream event 1-2-1 and event 1-2-2. However, it has to remind that it has only ask for the second event of this substream (event 1-2-2), therefore it filters the first event of the substream (1-2-1) to only send the substream since event 1-2-2 to its performAtomicSideEffect function. 
-\\
-
-\begin{figure}[h]
-  \begin{center} 
-    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/side-effect-reclimb.png}}
-    \caption{The stream replay mechanism with side-effect processors}
-    \label{fig:sideeffectreclimb}
-  \end{center}
-\end{figure}
-
-In the end, side-effect processors allow to define an arbitrary side-effect (with some constraints), allow to save disk space because it does not maintain
-a local journal, but it implies that event stream replays take longer because a side-effect processor cannot replay the stream itself, it has to ask to its parent.
-
-
-\subsection{Adaptive push-pull streaming with back-pressure and distributed mode}
+\subsection{Adaptive push-pull streaming}
 \label{sec:adapativepushpull}
 
 An important optimization can still be made to this model. For now, from a processor point of view, receiving input events and sending output events are totally
-decoupled tasks that are asynchronous between each others. For persistent processor, all input events are processed and the result substream is written to the local journal, and then children consume events from this journal. For side-effect processor, it means that each time that a side-effect processor receives a new input, its children will be notified that there is a new event via the long-polling mechanism, but for the children to get this event via the cursor mechanism the processor has to ask again its parent independently for each child in order to replay the stream from this event (as it has no persistence). 
-If the children were late in the stream, this is the only solution, but if the children were up-to-date in the stream, it would be way more performant to just send the processed out events directly to the children (for persistent processors also as it decreases the number of IO calls to the local journal).
+decoupled tasks that are asynchronous between each others. All input events are processed and the resultant substream is written to the local journal, and then children consume events from this journal. 
+If the children were late in the stream, this is the only solution, but if the children were up-to-date in the stream, it would be more performant to just send the processed out events directly to the children (without having them pulling from the local journal of its parent, which involves more IO calls to the local journal).
 \\
 
-To do this, a processor (persistent or side-effect) maintains a state for each of its children. The state can be UpToDate, WaitingForDownStreamAck or Late.
+To do this, a processor maintains a state for each of its children. The state can be UpToDate, WaitingForDownStreamAck or Late.
 
 UpToDate means that the parent knows that its child is up-to-date with the stream, so the out event(s) generated by the next input event that it will receive can 
-directly be sent to its child. For a persistent processor, the generated events can be directly sent to its child after being inserted to the local journal. Thus,
-the child does not have to lookup in the journal to get the event (this saves one IO round-trip to the local journal). For a side-effect processor, this means
-that the generated events are directly sent to its child after the side-effect, without the child telling the side-effect processor to re-compute the substream (by asking its grand-parent), therefore the performance gain is quite important.
+directly be sent to its child after being inserted in the local journal. Thus, the child does not have to lookup in the journal to get the event (this saves one IO round-trip to the local journal).
 
 WaitingForDownStreamAck is an intermediate step where the parent knows that it has sent an output event to its child, and is waiting for a child ACK meaning that it has
-processed the event (and inserted it in its local journal in case of a persistent processor). Thus, if a new input event comes in when the parent maintains this state
+processed the event. Thus, if a new input event comes in when the parent maintains this state
 for its child, it means that the child is now Late in the stream, so the parent moves the child's state to Late. If an ACK message comes from the child, the parent moves the
 child's state to UpToDate.
 
@@ -169,23 +148,51 @@ Thus, a processor adapts its stream strategy in real-time between push and pull 
   \end{center}
 \end{figure}
 
-\subsubsection{Optimized ACK mechanism with back-pressure using Iteratees}
+\subsection{Side-effect stream processors}
+\label{sec:sideeffectproc}
 
-Concerning the ACK mechanism, a naive way to do it would be for the child to send an application-level ACK message for each event received and processed. We will take
-a more performant approach by leveraging the built-in back-pressure mechanism of Iteratees. 
+Persistent event-sourced processors use their performAtomicSideEffect method to insert the generated out events in their local journal. We saw that a persistent processor can only do one
+atomic side-effect per out event in order to guarantee exactly-once side-effect semantic even in cases of failure. Moreover, a persistent processor uses a lot of disk space as it stores
+every output event in its local journal.
 
-As explained in section \ref{sec:iteratees}, the back-pressure mechanism allows a stream producer to automatically slow down its producing rate if the consumer is slow. 
-More precisely, the "producing" code of the Enumerator will be called to generate the next event only when the consuming Iteratee has totally consumed the current event.
-In our case, the Enumerator has the choice to get a stream from the local journal or its parent (Late case), or to directly send the latest output event (UpToDate case).
+To deal with these problems, we define another type of processors: side-effect processors. Side-effect processors do not have a local journal. Instead, when one of its children is slow
+and ask for past events, it must ask to its parent to replay these events. However, for children that are up-to-date with the stream, it sends directly the output events to them.
+
+Concerning the replay mechanism for slow children, this is a recursive call until the nearest parent processor that is persistent which is the tree root (Journal) in the worst case. 
+Moreover, each intermediate side-effect processor in this recursive call must take care of sending only the minimal amount of messages in substreams. Indeed,
+as we re-climb the generational PathId tree, each event sent by a parent is put in the process method of its child that generates the substream. We must just send
+events of this substream from a certain event because all events generated from previous events of the substream have already been processed by the original side-effect processor asking for a stream replay. 
+Figure \ref{fig:sideeffectreclimb} illustrates this mechanism. TODO explain image
+
+\begin{figure}[h]
+  \begin{center} 
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/side-effect-reclimb.png}}
+    \caption{The stream replay mechanism with side-effect processors}
+    \label{fig:sideeffectreclimb}
+  \end{center}
+\end{figure}
+
+Concerning the performAtomicSideEffect method, the contract for the side-effect is that it has to be atomic if one wants to have the exactly-once side-effect semantic, and moreover the side-effect of an out event should store its PathId somewhere to be able to retrieve it when it recovers from a crash (to keep the fault-tolerance property). Note that this is not the same than inserting the event in a journal as in persistent processors: here we only need to store the latest PathId, not the entire sequence of events. Upon a recover, a method getLastProcessedEventId of signature \verb|getLastProcessedEventId(): Future[PathId]| is able to retrieve the last PathId processed to initiate the recover mechanism explained in the previous section.
+\\
+
+In the end, side-effect processors allow to define an arbitrary side-effect (with some constraints), allow to save disk space because it does not maintain
+a local journal, but it implies that event stream replays take longer because a side-effect processor cannot replay the stream itself, it has to ask to its parent. However, if a processor is known to produce events slower than its children process them, a side-effect processor is a good trade-off because its "push-mode" is as fast as a persistent processor for up-to-date children.
+
+
+\subsection{Optimized ACK mechanism with back-pressure using Iteratees}
+
+Concerning the ACK mechanism from a child to its parent, a naive way to do it would be for the child to send an application-level ACK message for each event received and processed. We will take a more performant approach by leveraging the built-in back-pressure mechanism of Iteratees. 
+
+A processor is composed of one Iteratee in input (stream consumer) and several Enumerators (stream producers) in output (one per child). As explained in section \ref{sec:iteratees}, the back-pressure mechanism allows a stream producer to automatically slow down its producing rate if the consumer is slow. 
+More precisely, for each child, the "producing" code of it's parent Enumerator will be called to generate the next event only when the consuming Iteratee has totally consumed the current event (like an ACK mechanism). In our case, the Enumerator has the choice to get a stream from the local journal or its parent (Late case), or to directly send the latest output event (UpToDate case).
 The Iteratee is the child that receives an event and processes it to create a substream.
 Thus, we see that we don't need to create an application-level ACK as the mechanism of notifying the producer when the consumer has finished processing an event is already
 built-in in the Iteratee concept. But how does this work in a distributed setting ?
 
 
-\subsubsection{Distributed processors with TCP-level back-pressure}
+\subsection{Distributed processors with TCP-level back-pressure}
 
-A processor is composed of one Iteratee in input and several Enumerators in output (one per child). The pipeline composed by an Enumerator (source) and an Iteratee (sink) can
-be distributed via an HTTP chunked stream. An HTTP chunked stream is a unidirectional stream protocol that allows the producer (server) to maintain a connection with a client to send a possibly infinite number of chunks. An enumerator can be transformed very easily into a HTTP stream producer, and an Iteratee can be easily transformed in a HTTP stream client (more details in the Implementation part). Thus, processors can be distributed via HTTP streams on top of TCP.
+The pipeline composed by an Enumerator (source) and an Iteratee (sink) can be distributed via an HTTP chunked stream. An HTTP chunked stream is a unidirectional stream protocol that allows the producer (server) to maintain a connection with a client to send a possibly infinite number of chunks. An enumerator can be transformed very easily into a HTTP stream producer, and an Iteratee can be easily transformed in a HTTP stream client (more details in the Implementation part). Thus, processors can be distributed via HTTP streams on top of TCP.
 \\
 
 By plugging Enumerators / Iteratees via an HTTP stream, one very interesting property is that the back-pressure mechanism remains by leveraging TCP's flow control mechanism. In a few words, if a client does not consume its receive TCP buffer, it will send an ACK message to the sender with a sliding window of size 0, meaning that it does not want more data for now, so the sender stops sending data (this is known as TCP's sliding window flow control protocol).
