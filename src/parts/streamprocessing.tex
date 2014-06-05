@@ -179,7 +179,7 @@ Slow processor has a slower processing rate than its parent. Therefore, after ha
 Concerning the performAtomicSideEffect method, the contract for the side-effect is that it has to be atomic if one wants to have the exactly-once side-effect semantic, and moreover the side-effect of an out event should store its PathId somewhere to be able to retrieve it when it recovers from a crash (to keep the fault-tolerance property). Note that this is not the same than inserting the event in a journal as in persistent processors: here we only need to store the latest PathId, not the entire sequence of events. Upon a recover, a method getLastProcessedEventId of signature \verb|getLastProcessedEventId(): Future[PathId]| is able to retrieve the last PathId processed to initiate the recover mechanism explained in the previous section.
 \\
 
-In the end, side-effect processors allow to define an arbitrary side-effect (with some constraints), allow to save disk space because it does not maintain
+In the end, side-effect processors allow to define an arbitrary side-effect with exactly-once semantic, allow to save disk space because it does not maintain
 a local journal, but it implies that event stream replays take longer because a side-effect processor cannot replay the stream itself, it has to ask to its parent. However, if a processor is known to produce events slower than its children process them, a side-effect processor is a good trade-off because its "push-mode" is as fast as a persistent processor for up-to-date children.
 
 
