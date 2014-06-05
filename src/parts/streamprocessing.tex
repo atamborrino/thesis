@@ -24,7 +24,15 @@ As a reminder, no message loss is a requirement for the platform, so dropping th
 \subsection{Pull-based streaming with event-sourced processors}
 
 One suitable solution is to use a pull-model instead of a push-model. For each received event, a processor processes it to produce a substream and stores the events of this substream in a local journal as a side-effect. Thus, each processor maintains its own event journal, so each processor is \textit{event-sourced}.
-This allows each child to maintain a cursor on the journal of its parent pointing on the next event to pull. Thus, children can have totally different pulling and processing speeds, they are not coupled to each other. This approach of pull-based stream systems with decoupled multi-consumers using cursors comes from Apache Kafka, a distributed messaging system for log processing created at LinkedIn \footfullcite{bib:kafka}. 
+This allows each child to maintain a cursor on the journal of its parent pointing on the next event to pull. Thus, children can have totally different pulling and processing speeds, they are not coupled to each other. This approach of pull-based stream systems with decoupled multi-consumers using cursors comes from Apache Kafka, a distributed messaging system for log processing created at LinkedIn \footfullcite{bib:kafka}. Figure \ref{fig:pull_processors} illustrates the notion of pull-based processors.
+
+\begin{figure}[h]
+  \begin{center} 
+    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/pull_processors.png}}
+    \caption{Pull-based streaming}
+    \label{fig:pull_processors}
+  \end{center}
+\end{figure}
 
 A common problem with pull-based system is the polling part. How can children know when the next event is ready to be pulled? The naive way to do this is to check every X seconds / milliseconds if the parent has a new event in its journal. This can waste a lot of resources when a parent has no new event for a while. The solution brought by Kafka is to 
 perform long-polling: when the child's cursor goes on the next event, either it pulls this next event if it exists or it blocks until a new event comes in to pull it. Thus, children do not have to pull periodically to know whether there is a new event.
@@ -42,7 +50,7 @@ local journal. If one or several of them are "up-to-date" with the last event of
 
 However, this mechanism can be improved. For example, if a parent processor knows that one of its children is "up-to-date", it can directly send him the next event when it has just been created without passing by the persistent storage (in order to improve efficiency). This approach is described in section \ref{sec:adapativepushpull}.
 
-\subsection{Fault-tolerant persistent processors with exactly-once side-effect semantic using Path Ids}
+\subsection{Fault-tolerant persistent processors with exactly-once side-effect semantic}
 \label{sec:substreamproblem}
 
 Of course, a persistent storage on MongoDB allows fault-tolerance in case of a processor crashes and restarts. When a processor restarts, it checks in MongoDB what was the id of the latest output event it has successfully processed before crashing, and asks its parent for the next event after this id (it \textit{replays} the stream from where it crashed).
@@ -58,20 +66,15 @@ thus requires \textit{exactly-once} semantic, one can use the performAtomicSideE
 The function is called for each output event of the created sub-stream and is guaranteed to be called exactly-once for each output event even in cases of processor failures. The
 Future[Unit] return type is a Future returning nothing (i.e. a side-effect). The difference of returning Future[Unit] instead of simply returning Unit is that a side-effect
 can be asynchronous but returning a Future of nothing allows us to known when this side-effect is finished. This enables to ensure sequentiality of side-effects (the side-effect
-of "out event 1" in the substream will be finished when the side-effect of "out event 2" begins). Figure \ref{fig:pull_processors} illustrates the notion of pull-based processors.
-
-\begin{figure}[h]
-  \begin{center} 
-    \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/pull_processors.png}}
-    \caption{Pull-based streaming}
-    \label{fig:pull_processors}
-  \end{center}
-\end{figure}
+of "out event 1" in the substream will be finished when the side-effect of "out event 2" begins).
+\\
 
 With these two functions, fault-tolerance is handled in a clear manner. process is an user-defined function that is the logic of the processor: how to derive one input event to a substream of out events. As a pure function, it is not a problem if it is called several times for the same input. performAtomicSideEffect is then used on each out event to
 store it in a local journal. This operation must me \textit{atomic}. Thus, if a processor crashes, when it recovers it just takes the last out event id "LastID" from its local journal and asks its parent for the event that generated the substream containing this out event. The parent re-sends this event which is put again in the process method (at-least-once call semantic). This process method re-creates the substream, and a filter is put on the substream to take only the out events that are \textit{after} the original "LastID" output event. This
 filtered substream is then given to the performAtomicSideEffect method that goes on storing events in the local journal as usual. Figure \ref{fig:pull_processors_tolerance} illustrates
-the fault-tolerance of event-sourced pull-based processors. TODO EXPLAIN IMAGE
+the fault-tolerance of event-sourced pull-based processors. In this example, we suppose that Processor 2 fails just after the insertion in its local journal of event 5.
+When it recovers, it checks its local journal what was the latest event inserted, deduces from it the generator input event (event C in our case), and asks its parent to replay the stream
+from event C. The parent sends event C which is put again in the process method to generate the substream event 5, event 6 and event 7. Then, between the process and the performSideEffect operations, a filter is applied on the substream by Processor 2 to filter the output events that had already been inserted (in our case, event 5). And then the stream processing goes on with the insertion of event 6 and event 7.
 
 \begin{figure}[h]
   \begin{center} 
@@ -162,7 +165,8 @@ Concerning the replay mechanism for slow children, this is a recursive call unti
 Moreover, each intermediate side-effect processor in this recursive call must take care of sending only the minimal amount of messages in substreams. Indeed,
 as we re-climb the generational PathId tree, each event sent by a parent is put in the process method of its child that generates the substream. We must just send
 events of this substream from a certain event because all events generated from previous events of the substream have already been processed by the original side-effect processor asking for a stream replay. 
-Figure \ref{fig:sideeffectreclimb} illustrates this mechanism. TODO explain image
+Figure \ref{fig:sideeffectreclimb} illustrates this mechanism. In this example, a side-effect processor has two children: Slow Processor and Fast Processor. Fast processor has a processing time that is quicker than its parent, therefore the latter will always have an up-to-date state for its children, so it will be in push-mode for this children. However,
+Slow processor has a slower processing rate than its parent. Therefore, after having push event 1-1, side-effect processor will be in pull-mode for this child (Late state). When slow processor asks for a replay of the stream since event 1-2 (included), its parent side-effect processor has no choice but to ask itself to its parent persistent processor (because it has no local journal itself). The notion of Path Ids is again used here in order to deduce from event 1-2 that the generator event was event 1. Therefore, side-effect processor asks for a replay of the stream from event 1 to persistent processor, and this one sends him event 1 from its local journal. Then, side-effect processor has to apply the same filter mechanism as the recover process of crashed processor in order to send only the minimum number of events needed (in the example it filters event 1-1 and sends to slow processor the rest of the substream).
 
 \begin{figure}[h]
   \begin{center} 
