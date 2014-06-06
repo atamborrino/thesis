@@ -38,7 +38,7 @@ Moreover, it would be interesting to allow customizable parallelization of event
 Another interesting future work is extending the tree structure of stream processors to a DAG structure. Such extension would of course complicate the replay mechanism of streams as a processor could have several parents.
 \\
 
-Last but not least, even if data storage systems become larger and cheaper, there is a time when the Journal and local journals will be too big. A log compaction mechanism could be implemented to deal with this issue. It could be naive by just removing events that are X day old, but it could also keep track of keyed data (resource) to compact events in a smart way (for example, if several updates have happened on a same resource during one day, it could merge these updates to create only one event).
+Last but not least, even if data storage systems become larger and cheaper, there is a time when the Journal and local journals will be too big. A event compaction mechanism could be implemented to deal with this issue. It could be naive by just removing events that are X day old, but it could also keep track of keyed data (resource) to compact events in a smart way (for example, if several updates have happened on a same resource during one day, it could merge these updates to create only one event).
 
 
 
