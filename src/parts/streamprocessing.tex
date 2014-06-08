@@ -224,7 +224,7 @@ Thus, this Future is like an ACK that the Journal had successfully stored the ev
 that this new event will be ordered after the previous event. The future also propagates back-pressure, because if a producer waits for this Future before sending a new event, it means that it has waited that the Journal had time to process it. Producers that can not wait for the Future to be fulfilled can call the \verb|write| method several times
 ignoring the Futures returned. However, in this case, there is no guarantee that the event has been correctly inserted, and if all producers act like that the Journal may be overwhelmed. Thus, if possible, it is better to throttle the insertion rate using the Future returned by the write method.
 
-\subsection{Example application}
+\subsection{Use case business application}
 
 Using this generic stream processing library, an example application has also been implemented to meet functional business requirements. The aim of this application is to
 maintain real-time dashboards on business data (sales, production, finance, ...). Data read latency must be really low, so creating pre-computed dashboards that
@@ -236,7 +236,7 @@ Figure \ref{fig:exampleapp} shows the tree of processors used.
 \begin{figure}[h]
   \begin{center} 
     \makebox[\textwidth]{\includegraphics[width=1.0\textwidth]{img/exampleapp.png}}
-    \caption{Example application of processors for pre-computed dashboards that update incrementally}
+    \caption{Use case: real-time low-latency dashboards on business data}
     \label{fig:exampleapp}
   \end{center}
 \end{figure}
