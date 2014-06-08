@@ -202,7 +202,6 @@ abstract class StreamProcessor[I, O](implicit ec: ExecutionContext, ei: Evented[
             maybeEvent map (event => Some(currentId, Enumerator(event))) getOrElse 
               Some(currentId, Enumerator.empty[O])
           }
-
         case Late =>
           StreamProcessorHelper.headOption(since(currentId)) flatMap {
             case (None, _) =>
@@ -212,7 +211,6 @@ abstract class StreamProcessor[I, O](implicit ec: ExecutionContext, ei: Evented[
                 maybeEvent map (event => Some(currentId, Enumerator(event))) getOrElse 
                   Some(currentId, Enumerator.empty[O])
               }
-
             case (Some(event), remainingEnum) =>
               // ignore promise
               consumersTrigger.single.getAndTransform(prev => prev - consumerId)

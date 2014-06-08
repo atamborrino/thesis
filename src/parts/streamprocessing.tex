@@ -247,7 +247,7 @@ state of a resource in output. Its persistent nature allows other services to qu
 Pusher is a side-effect processor responsible for updating other services upon the reception of particular events. Its side-effect is used to do an in-place update of the last PathId
 it has seen.
 
-FlatSnapshot is side-effect processor that uses its side-effect to maintain a MongoDB view on the last state of each resource that is not deleted. Its process method is the identity function on the current state of a resource. 
+FlatSnapshot is a side-effect processor that uses its side-effect to maintain a MongoDB view on the last state of each resource that is not deleted. Its process method is the identity function on the current state of a resource. 
 
 Dashboards are side-effect processors that use their side-effect to maintain pre-computed aggregation views on various resources. They take the new current state of a resource as input,
 and returns a substream of new updated aggregation lines as output.
