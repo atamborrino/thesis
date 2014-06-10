@@ -1,6 +1,7 @@
 \chapter{Architecture and implementation of the Journal and Stream Processing part}
 
 \section{Architecture}
+\label{sec:archistream}
 
 As presented in the Requirements chapter, the Journal needs to store the events as an append-only list. The Journal should also provide a way for stream processors to subscribe to the real-time stream of events. Stream processors can subscribe to themselves in a Tree-like structure (see Figure \ref{fig:tree}), and upon the reception of an event a processor can create a substream of events and perform side-effects.
 \\
@@ -225,6 +226,7 @@ that this new event will be ordered after the previous event. The future also pr
 ignoring the Futures returned. However, in this case, there is no guarantee that the event has been correctly inserted, and if all producers act like that the Journal may be overwhelmed. Thus, if possible, it is better to throttle the insertion rate using the Future returned by the write method.
 
 \subsection{Use case business application}
+\label{sec:usecasebusiness}
 
 Using this generic stream processing library, an example application has also been implemented to meet functional business requirements. The aim of this application is to
 maintain real-time dashboards on business data (sales, production, finance, ...). Data read latency must be really low, so creating pre-computed dashboards that

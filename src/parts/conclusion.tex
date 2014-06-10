@@ -1,0 +1,25 @@
+\chapter{Conclusion and Future Works}
+
+\section{Conclusion}
+
+In this thesis has been presented a Reactive platform for Data Integration and Event Stream Processing. Events and Event-Sourcing are the core concepts of the platform to enable 
+real-time propagation of data changes across the system, from external data sources to data aggregation dashboards. Data sources are pulled in a parallel and incremental way via their REST API to create a real-time flow of events that are inserted in an event-sourced Journal. Saving not only the current state of the data but also all the data changes
+that led to this current state allows to be able to query and replay the history of the data, which can be useful for business purposes but also for technical purposes such as fault-tolerance or stream processing with subscribers that have heterogeneous processing speeds.
+From the events stored in the Journal, a tree of stream processors can be defined to subscribe to the data changes and react in various ways. An example use case of a processor is maintaining a specific data aggregation dashboard that is updated incrementally upon the reception of certain types of events in real-time. Strong technical guarantees are ensured by the platform as in-order sequential asynchronous processing with exactly-once side-effect semantic even in case of failures. Under the hood, a complex adaptive push-pull model with back-pressure is used to maximize the performance of the system and minimize the amount of resource (CPU, RAM) used. Functional programming abstractions have been used for maintainable and composable asynchronous programming.
+
+
+\section{Future Works}
+
+Concerning Future Works that can be made on the platform, one problem is that the distributed mode is for now point-to-point oriented, i.e. we need to manually configure which component (data puller, processor) is located on which machine. To obtain elastic scalability, it would be interesting to use a cluster oriented approach with a cluster manager layer that automatically puts components on machines according to the current resource availability of each machine.
+\\
+
+Moreover, it would be interesting to allow customizable parallelization of event processing inside a processor via partitions as in Apache Kafka. A partition is a sequence of events that needs to be process sequentially. The current stream processing system can be thought to have only one partition. However, by defining multiple partitions, events that do not need to be processed sequentially could be processed in parallel inside a stream processor.
+\\
+
+Another interesting future work is extending the tree structure of stream processors to a DAG structure. Such extension would of course complicate the replay mechanism of streams as a processor could have several parents.
+\\
+
+Last but not least, even if data storage systems become larger and cheaper, there is a time when the Journal and the local journals will grow too much. An event compaction mechanism could be implemented to deal with this issue. It could be naive by just removing events that are X day old, but it could also keep track of keyed data (resource) to compact events in a smart way (for example, if several updates have happened on a same resource during one day, it could merge these updates to create only one event).
+
+
+
