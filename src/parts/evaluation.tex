@@ -5,11 +5,11 @@
 Concerning the functional requirements, the platform meets the needs by allowing to define data pullers (actors) that incrementally pull various data sources and various resource types.
 The pulled data is processed sequentially in a simple pipeline that aggregates, cleans and validates the data before inserting events in the Journal.
 
-Then, the Stream Processing part allows to define a tree of stream processors. A processor can react to events sent by its parent by producing a substream of events towards its children. Substream are inserted in-place in the stream, meaning that the whole substream should be sent to children before processing the next input event. A processor can do a side-effect with a guaranteed exactly-once side-effect semantic, allowing to the user of the library to safely define non-idempotent side-effects.
+Then, the Stream Processing part allows to define a tree of stream processors. A processor can react to events sent by its parent by producing a substream of events towards its children. Substream are inserted in-place in the stream, meaning that the whole substream should be sent to children before processing the next input event. A processor can do a side-effect with a guaranteed exactly-once side-effect semantic, allowing the user of the library to safely define non-idempotent side-effects.
 \\
 
 Concerning the non-functional requirements, all the parts of the architecture are built with an asynchronous non-blocking architecture according to the Reactive Manifesto 
-\footfullcite{bib:reactiveManifesto} to optimize performance and resource use by being \textit{event-driven, scalable, resilient and responsive}, the four Reactive Traits.
+\footfullcite{bib:reactiveManifesto} to optimize performance and resource consumption (section \ref{sec:perfeval} contains performance tests).
 
 The Data Integration part is built on top of an Actor system to allow easy concurrency and distribution. Moreover, it makes the best use of resources (CPU, Threads) thanks to a non-blocking implementation. Futures and Iteratees are used to model sequential in-order asynchronous stream processing in a simple, composable and maintainable way. A persistence storage
 in MongoDB is used to ensure fault-tolerant pullers: there is no event loss or duplication even in case of failure of a puller. The system is easily distributable 
@@ -20,16 +20,17 @@ The Stream Processing part uses a complex adaptive push-pull model with back-pre
 
 
 \section{Performance evaluation}
+\label{sec:perfeval}
 
 \subsection{Latency and resource consumption}
 
 Performance tests have been performed on the Journal and Stream Processing part on a local machine with a 2.2 GHz processor of 8 cores (so a parallelization factor of 8) with a SSD. The JVM is configured with a maximum Heap size of 2 GB. We will perform tests on the business use case application described in section \ref{sec:usecasebusiness}.
 \\
 
-First, we measure the end-to-end latency between the time when an event (1 Ko) is inserted and the time when the resulting dashboard update(s) have been entirely performed. Figure \ref{fig:latencyplot} show the plot of the average end-to-end latency between the Journal and a Dashboard when we increase the push rate of events inserted in the Journal.
+First, we measure the end-to-end latency between the time when an event (1 Ko) is inserted and the time when the resulting dashboard update(s) have been entirely performed. Figure \ref{fig:latencyplot} shows the plot of the average end-to-end latency between the Journal and a Dashboard when we increase the push rate of events inserted in the Journal.
 
 We notice that before a threshold of roughly 200 events inserted in the Journal per second, the latency between the Journal and a Dashboard is constant at 4 ms. This means that the processors lower in the tree structure (snapshot, flatSnapshot and the dashboards) can handle the push rate of the Journal and are not late in the stream (push-mode).
-However, after 200 events per second, the latency becomes roughly linear with the push rate. This means that dashboards starts to be late in the stream, and are forced to replay events at their rate because their processing time is too slow. Thus, the resultant plot is either constant (up-to-date child processors) or linear (late child processors), which is an expected and good result for scalability.
+However, after 200 events per second, the latency becomes linear with the push rate. This means that dashboards start to be late in the stream, and are forced to replay events at their rate because their processing time is too slow. Thus, the resultant plot is either constant (up-to-date child processors) or linear (late child processors), which is an expected and good result for scalability.
 \\
 
 \begin{figure}
@@ -40,13 +41,13 @@ However, after 200 events per second, the latency becomes roughly linear with th
   \end{center}
 \end{figure}
 
-To better visualize the fact that low level processors in the tree (dashboards) can catch up with the real-time stream speed or not, Figure \ref{fig:pushrate100}, Figure \ref{fig:pushrate500} and Figure \ref{fig:pushrate1000} shows the latency of each event in sequential order for several push rate. 
+To better visualize the fact that low-level processors in the tree (dashboards) can catch up (or not) with the real-time stream speed, Figure \ref{fig:pushrate100}, Figure \ref{fig:pushrate500} and Figure \ref{fig:pushrate1000} show the latency of each event in sequential order for several push rates. 
 
-We see that in Figure \ref{fig:pushrate100} (100 events / s), almost all events has a latency of 4 ms from the beginning. The peaks of latency that happen sometimes are due to garbage collection. However we notice a higher and slightly larger peak at the beginning of the plot (first events). This is supposed to be due to the initial warmup of the JVM and the components.
+We see that in Figure \ref{fig:pushrate100} (100 events / s), almost all events have a latency of 4 ms from the beginning of the test. The peaks of latency that happen sometimes are due to garbage collection. However we notice a higher and slightly larger peak at the beginning of the plot (corresponding to the first events). This is due to the initial warm-up of the JVM and the processors.
 
-On Figure \ref{fig:pushrate500} (500 events / s), we see an initial large latency peak, and then the latency goes back to the normal 4 ms with a few latency peaks due to garbage collection. We notice that the initial latency peak is now larger than in the 100 events / s case. But then, the dashboards manage to catch up with the real-time stream (as their processing speed is still lower than the push rate), and the latency goes back to normal (4 ms) after this warmup time.
+On Figure \ref{fig:pushrate500} (500 events / s), we see an initial large latency peak, and then the latency goes back to the normal 4 ms with a few latency peaks due to garbage collection. We notice that the initial latency peak is now larger than in the 100 events / s case. This is because the system needs more time to warm-up for a stream at 500 events / s rather than 100 events / s, but then the dashboards manage to catch up with the real-time stream (as their processing speed is still lower than the push rate), and the latency goes back to normal (4 ms) after this warm-up time.
 
-However, in Figure \ref{fig:pushrate1000} (1000 events / s), we see that the latency goes on increasing. This is because dashboards do not manage to catch up with the real-time stream that is too fast compared to their processing speed, and so they keep accumulating delay compared to the real-time stream. One solution could be to distribute the dashboards on several machines to allow more resource to them. Moreover, in a real-world scenario, one can hope than times with 1000 events / s are interleaved with moments where the push rate is slower so that the processors have time to reduce their lateness and eventually catch up with the real-time stream. This scenario is simulated in Figure \ref{fig:severalrates}: event 0 to 10000 are pushed with a push rate of 1000 events / s, and just after event 10000 to 20000 are pushed with a push rate of 100 events / s. We see that the processors manage to catch up with the real-time stream around event 12500 and then the latency remains constant at 4 ms.
+However, in Figure \ref{fig:pushrate1000} (1000 events / s), we notice that the latency goes on increasing. This is because dashboards do not manage to catch up with the real-time stream that is too fast compared to their processing speed, so they keep accumulating lateness compared to the real-time stream. One solution could be to distribute the dashboards on several machines to allow more resource to them. Moreover, in a real-world scenario, one can hope that moments with 1000 events / s are interleaved with moments where the push rate is slower so that the processors have time to reduce their lateness and eventually catch up with the real-time stream. This scenario is simulated in Figure \ref{fig:severalrates}: event 0 to 10000 are pushed with a push rate of 1000 events / s, and just after event 10000 to 20000 are pushed with a push rate of 100 events / s. We see that the processors manage to catch up with the real-time stream around event 12500 and then the latency remains constant at 4 ms.
 \\
 
 \begin{figure}
@@ -82,10 +83,10 @@ However, in Figure \ref{fig:pushrate1000} (1000 events / s), we see that the lat
 \end{figure}
 
 
-Furthermore, during this performance test, the resource consumption (JVM Heap space, number of threads) has been profiled. Figure \ref{fig:plotheapspace} and Figure \ref{fig:plotthreads} show the JVM Heap space used and the number of threads used while increasing the event push rate on the Journal.
-Concerning the number of threads used, we notice that there is a constant number of threads (76) used independently of the push rate, which is expected with our non-blocking IO model to avoid too many context switching.
-Concerning the JVM heap space consumption, we notice that the value increase in a less than linear fashion with the push rate (the plot has logarithmic-like shape).
-These two plots validate the fact that the platform uses a predictable amount of resource that does not increase too much with the load (optimization of resource consumption).
+Furthermore, during these performance tests, the resource consumption (JVM Heap space, number of threads) has been profiled. Figure \ref{fig:plotheapspace} and Figure \ref{fig:plotthreads} show the JVM Heap space used and the number of threads used while increasing the event push rate.
+Concerning the number of threads used, we notice that this number is constant (76) independently of the push rate, which is expected with our non-blocking IO model to avoid too many thread creations and context switching.
+Concerning the JVM heap space consumption, we notice that the value increases in a less than linear fashion with the push rate (the plot has a logarithmic shape).
+These two plots validate the fact that the platform uses an amount of resources that does not increase too much with the load (optimization of resource consumption).
 
 \begin{figure}
   \begin{center} 
@@ -106,8 +107,8 @@ These two plots validate the fact that the platform uses a predictable amount of
 
 \subsection{Fault-tolerance}
 
-In this part, we define a performance test to measure the recovery time of a processor that recovers from a crash and must replay 1000 events that happened when it was crashed. Figure \ref{fig:barchart} shows the resultant bar chart.
-Using the tree structure of the business use case application presented in section \ref{sec:usecasebusiness}, the Snapshot processor is first killed and then restart. Its parent is the Journal, a persistent processor, so it has only one level to climb in the tree to replay the stream. Then, FlatSnapshot is killed. It is at level 2 in the tree, but its parent is a persistent processor (Snapshot). Therefore, it has also only one level in the tree to climb to replay the stream. As a result, its replay time is roughly the same than Snapshot (the processing time of these two processors is equivalent). Last but not least, a Dashboard is killed. As its parent is a side-effect processor (FlatSnapshot), it has to climb 2 levels to replay the stream (until Snapshot). Moreover, the processing time of a dashboard is slightly superior than other processors. As a result of these two factors (side-effect parent and slightly longer processing time), we see that Dashboard takes more time to replay the 1000 events that it missed, which is expected according to our model.
+In this part, we define a performance test to measure the recovery time of a processor that recovers from a crash and must replay 1000 events that happened when it was crashed. Figure \ref{fig:barchart} shows the resulting bar chart.
+Using the tree structure of the business use case application presented in section \ref{sec:usecasebusiness}, the Snapshot processor is first killed and then restarted. Its parent is the Journal, a persistent processor, so it has only one level to climb in the tree to replay the stream. Then, FlatSnapshot is killed. It is at level 2 in the tree, but its parent is a persistent processor (Snapshot), so it has also only one level in the tree to climb to replay the stream. As a result, its replay time is roughly the same than Snapshot (the processing time of these two processors is equivalent). Last but not least, a Dashboard is killed. As its parent is a side-effect processor (FlatSnapshot), it has to climb 2 levels to replay the stream (until reaching the Snapshot persistent processor). Moreover, the processing time of a dashboard is slightly superior than other processors. As a result of these two factors (side-effect parent and slightly longer processing time), we see that Dashboard takes more time to replay the 1000 events that it missed, which is expected according to our model.
 
 \begin{figure}[h]
   \begin{center} 
