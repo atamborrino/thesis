@@ -16,6 +16,10 @@
 
 \usepackage{caption}
 
+\usepackage{hyperref}
+
+\usepackage{afterpage}
+
 \newcommand{\codesize}{\footnotesize}
 
 \pdfoptionpdfminorversion 6
@@ -83,7 +87,20 @@ Performance tests have been performed on a prototype application, which validate
 % \end{foreignabstract}
 % \clearpage
 
+\renewcommand{\listoflistings}{%
+  \cleardoublepage
+  \addcontentsline{toc}{chapter}{\listoflistingscaption}%
+  \listof{listing}{\listoflistingscaption}%
+}
+
+\begingroup
+\let\clearpage\relax
+\let\cleardoublepage\relax
+\let\newpage\relax
 \tableofcontents*
+\listoffigures
+\listoflistings
+\endgroup
 
 \mainmatter
 \pagestyle{newchap}
@@ -99,11 +116,5 @@ Performance tests have been performed on a prototype application, which validate
 
 \newpage
 \printbibliography
-
-\newpage
-\listoffigures
-
-\newpage
-\listoflistings
 
 \end{document}
