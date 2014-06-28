@@ -1,24 +1,24 @@
-\chapter{Introduction and system overview}
+\chapter{Introduction}
+
+\section{Context and system overview}
 
 Data is now at the center of organizations and is increasingly heterogeneous with an explosion of data sources 
 that each exposes data in its own format that can be structured, semi-structured or non-structured.
 Another major trend is that data processing needs to be real-time, because business men no longer want to wait a whole day 
-to have reports and alerts on their business data.
+to have reports and alerts on their business data. Last but not least, the volume of data that enterprises need to analyze is constantly growing, which is commonly referred as "Big Data".
 \\
 
 To achieve these requirements, traditional monolithic Data Wharehouse softwares start to be out-dated. They often
 propose to deal only with structured data to map it to a relational model, and are often batch-oriented: 
 the ETL mechanism (data extraction, transform and load) regularly happens once or twice per day, and there is no mechanism 
 for real-time subscriptions on new events happening on the data (as highlighted by Jay Kreps, engineer at LinkedIn, 
-in his article "The Log: What every software engineer should know about real-time data's unifying abstraction" \footfullcite{bib:linkedinLog}).
+in his article "The Log: What every software engineer should know about real-time data's unifying abstraction" \footfullcite{bib:linkedinLog}). Moreover,
+Data Integration, Data Storage and Data Reporting are often coupled into a single monolithic software.
 \\
 
-The platform presented in this thesis is an event-oriented Data Integration and Stream Processing platform that allows data consumers
-to subscribe to data changes in real-time. The main shift from traditional Data Wharehouse softwares is that the whole
-system is organized around the notion of \textit{immutable event}. Such a data system captures from various data sources
-a historical record of immutable events. Each event represents the change (creation, update or deletion) made to the data at a particular time. 
-Based on the Event-Sourcing principle \footfullcite{bib:eventSourcing}, events are stored in a Journal that is an ordered sequence of 
-events. Then, the stream of events coming from the Journal can be processed by data consumers that can react to the change of data (see Figure \ref{fig:main_archi} for the global architecture). 
+Thus, a new kind of architecture for Data Integration and Data Processing is needed in order to meet these new requirements: real-time processing of potentially big volumes of unstructured data. This thesis presents an architecture that solves this problem using \textit{decoupled components} that communicate with \textit{immutable events} that represent data changes. Events flow across the platform enabling components to react to data changes in various ways. Real-time should be understood as \textit{soft} real-time in comparison to batch modes that are more common in Big Data frameworks. For example, event propagation across the platform should be measured in milliseconds or seconds, whereas batch jobs are often measured in hours. Moreover, in a real-time platform, the notion of Big Data is more related to the push rate of events than the size of an event itself. Thus, the platform should take care of possible performance problems in order to handle high push rates.
+
+Each event represents the change (creation, update or deletion) made to a data resource at a particular time. Based on the Event-Sourcing principle \footfullcite{bib:eventSourcing}, events are stored in a Journal that is an ordered sequence of events. Then, the stream of events coming from the Journal can be processed by data consumers that can react to the change of data (see Figure \ref{fig:main_archi} for the global architecture). 
 An example of data consumer can be one that maintains a pre-computed view on the data that is updated upon each event, or one that pushes 
 notifications to another service upon the reception of some kinds of events.
 \\
@@ -95,4 +95,30 @@ In order to fulfill those requirements, the platform will apply the principles o
 that the platform is \textit{scalable, event-driven, resilient and responsive} (the four Reactive Traits). An asynchronous non-blocking approach with a share-nothing architecture will be used to develop the platform in order to optimize resource consumption, decouple components to be able to distribute them easily, take easily advantage of parallelization and handle failures. 
 The platform is developed using functional programming in the Scala programming language \footfullcite{bib:scala} in order to leverage functional programming abstractions to better handle asynchronous and stream-oriented code.
 \\
+
+
+\section{Related works}
+
+There exists several Big Data frameworks for real-time processing. 
+\\
+
+Apache Kafka \footfullcite{bib:kafka} is a high-throughput distributed messaging system developed at LinkedIn. It is a distributed publish-subscribe system where data producers can send messages in topics and data consumers can subscribe to topics. It is durable by persisting messages on disk and data consumers can pull events with a guaranteed order. However, as it uses a publish-subscribe abstraction, it does not enable the user to define clear stream processing flow structures (such as trees or DAGs) where components are both data consumers (receiving events from parent components) and data producers (sending events to their child components).
+\\
+
+Apache Storm \footfullcite{bib:stormframework} is a distributed and fault-tolerant real-time computation framework developed at Twitter. It enables the user to define a DAG of stream processors that can receive event from their parent(s) and send derived events to their children. However, messages are not persisted on disk, so there is no durability, which implies that slow processors are forced to keep past events in-memory if we want fast processors to move on to next events without waiting for slow processors (more details will be given on these types of recurrent stream processing issues in chapter \ref{chapt:streamproc}).
+\\
+
+As explained in more details in the thesis, our platform will take some architecture patterns of these two frameworks to achieve an original architecture with properties that none of these frameworks provide on their own.
+
+\section{Contributions}
+
+The main contributions of this thesis are:
+\begin{itemize}
+  \item Definition of the architecture of the Data Integration part and its implementation
+  \item Definition of the architecture of the Event Stream Processing part and its implementation as a generic library
+  \item Implementation of a business use case application using the generic library for event stream processing, as well as performance tests on this application
+\end{itemize}
+
+
+
 

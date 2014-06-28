@@ -1,4 +1,5 @@
 \chapter{Architecture and implementation of the Journal and Stream Processing part}
+\label{chapt:streamproc}
 
 \section{Architecture}
 \label{sec:archistream}
@@ -25,7 +26,8 @@ As a reminder, no message loss is a requirement for the platform, so dropping th
 \subsection{Pull-based streaming with event-sourced processors}
 
 One suitable solution is to use a pull-model instead of a push-model. For each received event, a processor processes it to produce a substream and stores the events of this substream in a local journal as a side-effect. Thus, each processor maintains its own event journal, so each processor is \textit{event-sourced}.
-This allows each child to maintain a cursor on the journal of its parent pointing on the next event to pull. Thus, children can have totally different pulling and processing speeds, they are not coupled to each other. This approach of pull-based stream systems with decoupled multi-consumers using cursors comes from Apache Kafka, a distributed messaging system for log processing created at LinkedIn \footfullcite{bib:kafka}. Figure \ref{fig:pull_processors} illustrates the notion of pull-based processors.
+This allows each child to maintain a cursor on the journal of its parent pointing on the next event to pull. Thus, children can have totally different pulling and processing speeds, they are not coupled to each other. This approach of pull-based stream systems with decoupled multi-consumers using cursors comes from Apache Kafka \footfullcite{bib:kafka}. 
+Figure \ref{fig:pull_processors} illustrates the notion of pull-based processors.
 
 \begin{figure}[h]
   \begin{center} 
@@ -113,7 +115,7 @@ will generate event 1-1-1, event 1-1-2, event 1-2-1, event 1-2-2, event 1-3-1 an
 We see that the generation of events has a tree-shape, and each event can be characterized by a path in this tree (for example, 1-2-1). The idea of PathId is to
 auto-generate these path ids when events pass through processors so that it is possible to re-climb the tree given a particular event.
 
-Concerning fault-tolerance, a child processor that recovers after a crash can check its last PathId, remove the last node "LastNode" of it and send this path id to its parent. Then, the parent sends him the event that the child re-processes (re-creating the substream), and thanks to the number "LastNode" of the last node the child can know from where in the substream it crashed. The idea of id generation to be able to retrieve from a child event the parent event comes from Apache Storm, a distributed and fault-tolerant real-time computation framework \footfullcite{bib:storm}.
+Concerning fault-tolerance, a child processor that recovers after a crash can check its last PathId, remove the last node "LastNode" of it and send this path id to its parent. Then, the parent sends him the event that the child re-processes (re-creating the substream), and thanks to the number "LastNode" of the last node the child can know from where in the substream it crashed. The idea of id generation to be able to retrieve from a child event the parent event comes from the "Guaranteeing message processing" system of Apache Storm \footfullcite{bib:storm}.
 
 The implementation part will explain in more details how these PathIds are serialized and deserialized in MongoDB.
 
