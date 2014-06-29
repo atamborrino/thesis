@@ -99,13 +99,13 @@ The platform is developed using functional programming in the Scala programming 
 
 \section{Related works}
 
-There exists several Big Data frameworks for real-time processing. 
+There exists several Big Data frameworks for real-time processing. Among them, Apache Kafka \footfullcite{bib:kafka} and Apache Storm \footfullcite{bib:stormframework} have been thoroughly studied for this thesis.
 \\
 
-Apache Kafka \footfullcite{bib:kafka} is a high-throughput distributed messaging system developed at LinkedIn. It is a distributed publish-subscribe system where data producers can send messages in topics and data consumers can subscribe to topics. It is durable by persisting messages on disk and data consumers can pull events with a guaranteed order. However, as it uses a publish-subscribe abstraction, it does not enable the user to define clear stream processing flow structures (such as trees or DAGs) where components are both data consumers (receiving events from parent components) and data producers (sending events to their child components).
+Apache Kafka is a high-throughput distributed messaging system developed at LinkedIn. It is a distributed publish-subscribe system where data producers can send messages in topics and data consumers can subscribe to topics. It is durable by persisting messages on disk and data consumers can pull events with a guaranteed order. However, as it uses a publish-subscribe abstraction, it does not enable the user to define clear stream processing flow structures (such as trees or DAGs) where components are both data consumers (receiving events from parent components) and data producers (sending events to their child components).
 \\
 
-Apache Storm \footfullcite{bib:stormframework} is a distributed and fault-tolerant real-time computation framework developed at Twitter. It enables the user to define a DAG of stream processors that can receive event from their parent(s) and send derived events to their children. However, messages are not persisted on disk, so there is no durability, which implies that slow processors are forced to keep past events in-memory if we want fast processors to move on to next events without waiting for slow processors (more details will be given on these types of recurrent stream processing issues in chapter \ref{chapt:streamproc}).
+Apache Storm is a distributed and fault-tolerant real-time computation framework developed at Twitter. It enables the user to define a DAG of stream processors that can receive event from their parent(s) and send derived events to their children. However, messages are not persisted on disk, so there is no durability, which implies that slow processors are forced to keep past events in-memory if we want fast processors to move on to next events without waiting for slow processors (more details will be given on these types of recurrent stream processing issues in chapter \ref{chapt:streamproc}).
 \\
 
 As explained in more details in the thesis, our platform will take some architecture patterns of these two frameworks to achieve an original architecture with a list of properties that none of these frameworks fully provide on their own.
