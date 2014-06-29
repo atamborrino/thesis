@@ -98,7 +98,7 @@ This section details the following non-functional requirements:
   \item Easy scale up and scale out with a share-nothing architecture.
   \item Decoupled processors that can consume the stream with heterogeneous processing speeds without affecting each other.
   \item Optimize resource consumption in the whole system with non-blocking IO.
-  \item All the previous non-functional requirements should ensure a soft real-time property for end-to-end event propagation (as defined in the introduction).
+  \item All the previous non-functional requirements should ensure a soft real-time property (as defined in the introduction). In a few words, for a real-world event push rate as in the business use case application, the end-to-end event processing latency should be measured in seconds (not minutes or hours).
 \end{itemize}
 
 \subsection{Data Integration}
