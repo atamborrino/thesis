@@ -99,7 +99,7 @@ The platform is developed using functional programming in the Scala programming 
 
 \section{Related works}
 
-There exists several Big Data frameworks for real-time processing. Among them, Apache Kafka \footfullcite{bib:kafka} and Apache Storm \footfullcite{bib:stormframework} have been thoroughly studied for this thesis.
+There exist several Big Data frameworks for real-time processing. Among them, Apache Kafka \footfullcite{bib:kafka} and Apache Storm \footfullcite{bib:stormframework} have been thoroughly studied for this thesis.
 \\
 
 Apache Kafka is a high-throughput distributed messaging system developed at LinkedIn. It is a distributed publish-subscribe system where data producers can send messages in topics and data consumers can subscribe to topics. It is durable by persisting messages on disk and data consumers can pull events with a guaranteed order. However, as it uses a publish-subscribe abstraction, it does not enable the user to define clear stream processing flow structures (such as trees or DAGs) where components are both data consumers (receiving events from parent components) and data producers (sending events to their child components).
