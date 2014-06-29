@@ -2,6 +2,13 @@
 
 \section{Functional requirements}
 
+This section details the following functional requirements:
+\begin{itemize}
+  \item Incremental pull of data changes from various data sources' REST APIs with data cleaning and validation.
+  \item Insertion of data events in the Journal, ensuring no event duplication and no event loss even in case of transient failures.
+  \item Stream processing system composed of stream processors forming a tree structure. Each processor must ensure an exactly-once semantic for side-effects even in case of transient failures. The stream processing system must also ensure no event duplication and no event loss even in case of transient failures, which implies a possibility for processors to \textit{replay} the stream.
+\end{itemize}
+
 \subsection{Data Integration}
 
 The Data Integration part of the platform needs to integrate several data sources to the Journal. Integration means that it must be able 
@@ -81,20 +88,28 @@ database, but despite the asynchronous nature of the call the processor must wai
 before processing the next event). Even sub-stream production can be asynchronous, meaning that the production of a sub-stream
 can be a composition of asynchronous operations (like pulling from a database with an asynchronous non-blocking driver).
 
+Last but not least, the platform must ensure no message loss or duplication even in case of a temporary failure of a processor. This means that a processor
+that had a transient failure must be able to \textit{replay} the stream from where it was before its crash.
+
 \section{Non-functional requirements}
+
+This section details the following non-functional requirements:
+\begin{itemize}
+  \item Easy scale up and scale out with a share-nothing architecture.
+  \item Decoupled processors that can consume the stream with heterogeneous processing speeds without affecting each other.
+  \item Optimize resource consumption in the whole system with non-blocking IO.
+  \item All the previous non-functional requirements should ensure a soft real-time property for end-to-end event propagation (as defined in the introduction).
+\end{itemize}
 
 \subsection{Data Integration}
 
-The Data Integration part must be able to scale up easily. Scale up means that the puller should automatically make the best possible
-use of all cores available on a machine in order to parallelize the various pulls. The different parts of the puller 
-should also be easily distributable in case of the load if too big for one machine to handle. 
+The Data Integration part must be able to scale up easily as one of the goal of the platform is to potentially handle high push rates of events (real-time Big Data). Scale up means that the puller should automatically make the best possible use of all cores available on a machine in order to parallelize the various pulls. The different parts of the puller should also be easily distributable in case of the load if too big for one machine to handle. 
 
-The puller should also be fault-tolerant, meaning that a failure and restart of the system should ensure that no event
-is duplicated or lost.
+To prevent software and/or hardware faults that may happen in every kind of IT systems, the puller should also be fault-tolerant, meaning that a failure and restart of the system should ensure that no event is duplicated or lost.
 
 Moreover, the nature of the puller implies that it will spend the majority of its time doing IO to query different data sources.
 Those IOs can have various durations depending on the size of the data to pull, the latency and bandwidth of the data sources, etc.
-We want to optimize the use of resource (CPU, RAM) despite the fact that the platform is very IO-oriented. Chapter \ref{chap:study} will show how asynchronous non-blocking IO meets these expectations.
+We want to optimize the use of resource (CPU, RAM) despite the fact that the platform is very IO-oriented. This enables to maximize the event push rate that a given machine can handle, and therefore minimize the cost of the infrastructure once the platform is in production. Chapter \ref{chap:study} will show how asynchronous non-blocking IO meets these expectations. 
 
 Another non-functional requirement is to have clean and composable code source despite its asynchronous nature. Asynchronous
 code can indeed lead to maintenance nightmare if the wrong abstractions are used. Chapter \ref{chap:study} will
@@ -105,17 +120,9 @@ show that the use of functional programming solves these problems.
 The Journal and Stream Processing part requires complex non-functional requirements in order to optimize resource consumption and maximize performance.
 
 A common problem with stream processing is to manage the flow rate. A producer can indeed produce events at a rate superior to
-the processing rate of a consumer. This problem is even more important when there is
-a tree-like structure of stream processors instead of a linear structure. Indeed, the platform should handle the fact that even if sibling processors in the tree
-have different processing speeds, they do not block each other based on the slowest sibling. In other words, sibling processors should be
-totally decoupled so that when a new event is sent from a parent to its children, the parent does not have to wait that its slowest
-children has finished to process the event in order to send the next event to them. This problem should be handled while minimizing
-RAM consumption.
+the processing rate of a consumer. This problem is even more important when there is a tree-like structure of stream processors instead of a linear structure. Indeed, the platform should handle the fact that even if sibling processors in the tree have different processing speeds, they do not block each other based on the slowest sibling. In other words, sibling processors should be totally decoupled so that when a new event is sent from a parent to its children, the parent does not have to wait that its slowest
+children has finished to process the event in order to send the next event to them. This property guarantees that a long processing will not slow down other parallel slow processing (so that an event stream that goes only through fast processors can keep a low latency). This problem should be handled while minimizing RAM consumption in order to make the best use of the resources in the system so that a given resource configuration can handle a higher push rate of events.
 
-Another requirement is no message loss or duplication even in case of a temporary failure of a processor. This means that a processor
-that had a transient failure must be able to \textit{replay} the stream from where it was before its crash.
-
-Stream processors should also be easily distributable in order to deal with event flows that are too big
-for one machine to handle.
+Stream processors should also be easily distributable in order to deal with event flows that are too big for one machine to handle.
 
 
