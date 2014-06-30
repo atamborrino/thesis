@@ -8,12 +8,12 @@ Another major trend is that data processing needs to be real-time, because busin
 to have reports and alerts on their business data. Last but not least, the volume of data that enterprises need to analyze is constantly growing, which is commonly referred as "Big Data".
 \\
 
-To achieve these requirements, traditional monolithic Data Wharehouse softwares start to be out-dated. They often
-propose to deal only with structured data to map it to a relational model, and are often batch-oriented: 
+To meet these requirements, traditional Data Warehouse software start to be out-dated. They often
+propose to deal only with structured data in order to store it in a relational database. Moreover, they are often batch-oriented: 
 the ETL mechanism (data extraction, transform and load) regularly happens once or twice per day, and there is no mechanism 
-for real-time subscriptions on new events happening on the data (as highlighted by Jay Kreps, engineer at LinkedIn, 
-in his article "The Log: What every software engineer should know about real-time data's unifying abstraction" \footfullcite{bib:linkedinLog}). Moreover,
-Data Integration, Data Storage and Data Reporting are often coupled into a single monolithic software.
+for real-time subscriptions on new data events (as highlighted by Jay Kreps, engineer at LinkedIn, 
+in his article "The Log: What every software engineer should know about real-time data's unifying abstraction" \footfullcite{bib:linkedinLog}). Furthermore,
+Data Integration, Data Storage and Data Reporting are often coupled into a single monolithic architecture.
 \\
 
 Thus, a new kind of architecture for Data Integration and Data Processing is needed in order to meet these new requirements: real-time processing of potentially big volumes of unstructured data. This thesis presents an architecture that solves this problem using \textit{decoupled components} that communicate with \textit{immutable events} that represent data changes. Events flow across the platform enabling components to react to data changes in various ways. Real-time should be understood as \textit{soft} real-time in comparison to batch modes that are more common in Big Data frameworks. For example, event propagation across the platform should be measured in milliseconds or seconds, whereas batch jobs are often measured in hours. Moreover, in a real-time platform, the notion of Big Data is more related to the push rate of events than the size of an event itself. Thus, the platform should take care of possible performance problems in order to handle high push rates.
@@ -55,7 +55,7 @@ event added to the journal. Figure \ref{fig:event-sourcing} illustrates the diff
   \end{center}
 \end{figure}
 
-This kind of architecture is also known as CQRS \footfullcite{bib:cqrs}. The core principle of CQRS is to decouple the write part and the read part
+This kind of architecture is also known as CQRS \footfullcite{bib:cqrs} (Command Query Responsibility Segregation). The core principle of CQRS is to decouple the write part and the read part
 of a system. The write part (Data Integration) only needs to push immutable events to the Journal in an append-only fashion, which
 is very efficient because there is no mutation of the data and no read-write contentions as in traditional databases.
 The read part is a set of denormalized pre-computed views that are optimized for low read latency (as the views are automatically re-computed

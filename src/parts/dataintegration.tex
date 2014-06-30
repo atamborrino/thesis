@@ -1,7 +1,6 @@
 \chapter{Architecture and implementation of the Data Integration part}
 
-As stated in the Requirements chapter, the Data Integration part must incrementally pull various REST APIs (data sources) in parallel. For each resource type in
-in each data source, it must create an event flow. This event flow runs through several data cleaning and data transformation steps that can
+As stated in the Requirements chapter, the Data Integration part must incrementally pull various REST APIs (data sources) in parallel. For each resource type in each data source, it must create an event flow. This event flow runs through several data cleaning and data transformation steps that can
 be asynchronous. Despite the asynchronous nature, it should ensure that the event flow remains in-order. In the end, event flows are pushed
 into the Journal.
 
@@ -69,7 +68,7 @@ Moreover, in case the system needs to scale out, the Actor model also allows eas
 
 \subsection{Puller actor system}
 
-The Akka framework is used to implement the puller actor system in Scala. The JobScheduler is the main/master actor that receives top messages related to a data source and a special kind or resource, and spawns a new worker child to accomplish this task only if it has not already a child doing this particular task. Listing \ref{lst:akkajobscheduler} shows the code of the JobScheduler actor.
+The Akka framework is used to implement the puller actor system in Scala. The JobScheduler is the main/master actor that receives top messages related to a data source and a special kind of resource, and spawns a new worker child to accomplish this task only if it has not already a child doing this particular task. Listing \ref{lst:akkajobscheduler} shows the code of the JobScheduler actor.
 
 \begin{listing}[h]
 \begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
@@ -219,7 +218,7 @@ def groupByDocumentIdKeepingHeadEvent:
 \label{lst:keepHeadId}
 \end{listing}
 
-Then, we must create an enumeratee that transforms this Map in a stream of event in ascendant date order (see Listing \ref{lst:enumreorder}).
+Then, we must create an enumeratee that transforms this Map in a stream of events in ascendant date order (see Listing \ref{lst:enumreorder}).
 
 \begin{listing}[h]
 \begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}
@@ -387,13 +386,13 @@ akka {
 \label{lst:configremoteworker}
 \end{listing}
 
-Thus, we transform our system to a multi-core local system to a distributed system without having to change the code. This can be very useful for systems that first have enough resources with one machine, but after a while need to be put on several machines for performance.
+Thus, we transform our system to a multi-core local system to a distributed system without having to change the code. This can be very useful for systems that first have enough resources with one machine, but after a while need to be run on several machines for performance.
 \\
 
 However, one problem with the approach of Akka Remoting is that it is "end-point to end-point" oriented, meaning that the jobs for data source X or Y are statically
-mapped to one machine. For elastic and adaptive scalability, it would be more interesting to give several worker machine addresses to Akka, and then let it determine itself on which machine it is better to launch the new child worker according to the current resource availability of the machines (CPU, RAM, ...).
+mapped to one machine. For elastic and adaptive scalability, it would be more interesting to give several worker machine addresses to Akka, and then let it determine by itself on which machine it is better to launch the new child worker according to the current resource availability of the machines (CPU, RAM, ...).
 
-This approach in currently under development in Akka and is named Akka Cluster \footfullcite{bib:akkacluster}. In Akka cluster, distribution in cluster centric instead of end-to-end centric, meaning that failed nodes are automatically removed from the cluster, and new node can be added at runtime. Moreover, it will allow automatic actor tree partitioning on the cluster, which means that a given actor child will be automatically created on the machine that is the more available at the current time.
+This approach in currently under development in Akka and is named Akka Cluster \footfullcite{bib:akkacluster}. In Akka cluster, distribution is cluster centric instead of end-to-end centric, meaning that failed nodes are automatically removed from the cluster, and new node can be added at runtime. Moreover, it will allow automatic actor tree partitioning on the cluster, which means that a given actor child will be automatically created on the machine that is the more available at the current time.
 
 \begin{listing}
 \begin{minted}[fontsize=\codesize, frame=lines, framesep=2mm]{scala}

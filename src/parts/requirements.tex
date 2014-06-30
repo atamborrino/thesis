@@ -11,7 +11,7 @@ This section details the following functional requirements:
 
 \subsection{Data Integration}
 
-The Data Integration part of the platform needs to integrate several data sources to the Journal. Integration means that it must be able 
+The Data Integration part of the platform needs to integrate several data sources in order to push data events into the Journal. Integration means that it must be able 
 to detect the changes made to the data, and push events that can be either create event or update event or delete event.
 In the following, we call a data entry a \textit{resource}. A resource is a keyed data defined by its id (for example \verb|/client/1| for a
 resource of type client of id 1). Each type of resource has a defined set of fields (for example a client
@@ -105,7 +105,7 @@ This section details the following non-functional requirements:
 
 The Data Integration part must be able to scale up easily as one of the goal of the platform is to potentially handle high push rates of events (real-time Big Data). Scale up means that the puller should automatically make the best possible use of all cores available on a machine in order to parallelize the various pulls. The different parts of the puller should also be easily distributable in case of the load if too big for one machine to handle. 
 
-To prevent software and/or hardware faults that may happen in every kind of IT systems, the puller should also be fault-tolerant, meaning that a failure and restart of the system should ensure that no event is duplicated or lost.
+To prevent software and/or hardware faults that may happen in every kind of IT systems, the puller should also be fault-tolerant, i.e if a component experiences a transient failure, the system should ensure that no event is duplicated or lost.
 
 Moreover, the nature of the puller implies that it will spend the majority of its time doing IO to query different data sources.
 Those IOs can have various durations depending on the size of the data to pull, the latency and bandwidth of the data sources, etc.
