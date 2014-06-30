@@ -7,6 +7,8 @@ Moreover, we want to validate that after a period of high-push rate, a period of
 
 Furthermore, resource consumption should not exponentially increase when the push rate increases as we used several techniques to optimize resource consumption in the system.
 
+Concerning fault-tolerance of processors, we want to verify the fact that processors that have a persistent parent have a better recovery time than processors that have a side-effect parent (which implies to re-climb another level in the tree).
+
 Last but not least, the end-to-end latency of events should be acceptable (i.e. maximum several seconds) for a push rate that corresponds to a real-world push rate for the business application (around 100 events per second).
 \\
 
@@ -123,7 +125,8 @@ Using the tree structure of the business use case application presented in secti
 
 \section{Conclusion}
 
-To conclude, the performance tests meet the goals with expected latency patterns (the end-to-end event latency is constant before a push rate threshold from where the dashboards are forced to be late in the stream, but they can reduce their lateness if the push rate decreases after a period of high push rate). Moreover, resource consumption does not increase to much with the push rate. Last but not least, for a push rate of 100 events per seconds (which corresponds to the common push rate for the business application), the end-to-end latency is constant at 4 ms on a local machine, which is a very good result for our use case.
+To conclude, the performance tests meet the goals with expected latency patterns (the end-to-end event latency is constant before a push rate threshold from where the dashboards are forced to be late in the stream, but they can reduce their lateness if the push rate decreases after a period of high push rate). Moreover, resource consumption does not increase to much with the push rate. Furthermore, the fault-tolerance behavior of processors follows the expected patterns with a lower recovery time for processor that have a persistent parent.
+Last but not least, for a push rate of 100 events per seconds (which corresponds to the common push rate for the business application), the end-to-end latency is constant at 4 ms on a local machine, which is a very good result for our use case.
 
 
 
