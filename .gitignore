@@ -7,6 +7,7 @@
 **/*.pyg
 **/*.lof
 **/*.lol
+**/*.out
 **/*.run.xml
 src/main.pdf
 **/*.sublime-*

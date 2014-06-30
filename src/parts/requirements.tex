@@ -5,8 +5,8 @@
 This section details the following functional requirements:
 \begin{itemize}
   \item Incremental pull of data changes from various data sources' REST APIs with data cleaning and validation.
-  \item Insertion of data events in the Journal, ensuring no event duplication and no event loss even in case of transient failures.
-  \item Stream processing system composed of stream processors forming a tree structure. Each processor must ensure an exactly-once semantic for side-effects even in case of transient failures. The stream processing system must also ensure no event duplication and no event loss even in case of transient failures, which implies a possibility for processors to \textit{replay} the stream.
+  \item Insertion of data events in the Journal, ensuring no event duplication and no event loss even in cases of transient failures.
+  \item Stream processing system composed of stream processors forming a tree structure. Each processor must ensure an exactly-once semantic for side-effects even in cases of transient failures. The stream processing system must also ensure no event duplication and no event loss even in case of transient failures, which implies a possibility for processors to \textit{replay} the stream.
 \end{itemize}
 
 \subsection{Data Integration}
