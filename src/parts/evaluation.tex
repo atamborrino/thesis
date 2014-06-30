@@ -1,24 +1,21 @@
 \chapter{Performance evaluation}
 \label{sec:perfeval}
 
-The goals of the performance evaluation chapter is to validate the fact that the business application implemented with the generic stream processing library correctly react to an increasing event push rate on the Journal. From an initial push rate to a threshold, we expect the end-to-end latency\footnote{The duration between the moment when an event is inserted in the Journal and the moment when the derived sub-events has updated the related Dashboard} to be constant as the dashboards have a processing speed higher than the push rate. However, after this threshold, we can expect the dashboards to start being late in the stream, so the end-to-end latency should increase.
+One of the goals of the performance evaluation is to validate the fact that the business application implemented with the generic stream processing library (see section \ref{sec:usecasebusiness}) correctly reacts to an increasing push rate of events inserted the Journal. From an initial push rate to a certain threshold, we expect the end-to-end latency\footnote{The duration between the moment when an event is inserted in the Journal and the moment when the derived sub-events have updated the related Dashboard} to be constant as the dashboards have a processing speed higher than the push rate. However, after this threshold, we can expect the dashboards to start being late in the stream, so the end-to-end latency should increase.
 
-Moreover, we want to validate that after a period of high-push rate, a period of low push-rate enables the dashboards to reduce their lateness in the stream in order to catch up again with the real-time stream.
+Moreover, we want to validate the fact that after a period of high push rate (implying that the dashboards are late in the stream), a period of low push rate enables the dashboards to reduce their lateness in the stream in order to catch up again with the real-time stream.
 
-Furthermore, resource consumption should not exponentially increase when the push rate increases as we used several techniques to optimize resource consumption in the system.
+Furthermore, resource consumption should not exponentially increase when the push rate increases as we have used several techniques to optimize resource consumption in the system.
 
-Concerning fault-tolerance of processors, we want to verify the fact that processors that have a persistent parent have a better recovery time than processors that have a side-effect parent (which implies to re-climb another level in the tree).
+Concerning fault-tolerance of processors, we want to verify the fact that processors that have a persistent parent have a better recovery time than processors that have a side-effect parent (which implies to re-climb another level in the tree for the replay mechanism).
 
 Last but not least, the end-to-end latency of events should be acceptable (i.e. maximum several seconds) for a push rate that corresponds to a real-world push rate for the business application (around 100 events per second).
 \\
 
-In order to perform those tests, an external Scala program has been developed to insert arbitrary events (of 1 Ko each) in the Journal with the possibility of varying the push rate.
+Performance tests have been performed on the Journal and Stream Processing part of the business application on a local machine with a 2.2 GHz processor of 8 cores (so a parallelization factor of 8) with a SSD. The JVM is configured with a maximum Heap size of 2 GB. In order to perform those tests, an external Scala program has been developed to insert arbitrary events (of 1 Ko each) in the Journal with the possibility of varying the push rate.
 
 
 \section{Latency and resource consumption}
-
-Performance tests have been performed on the Journal and Stream Processing part on a local machine with a 2.2 GHz processor of 8 cores (so a parallelization factor of 8) with a SSD. The JVM is configured with a maximum Heap size of 2 GB. We will perform tests on the business use case application described in section \ref{sec:usecasebusiness}.
-\\
 
 First, we measure the end-to-end latency between the time when an event is inserted and the time when the resulting dashboard update(s) have been entirely performed. Figure \ref{fig:latencyplot} shows the plot of the average end-to-end latency between the Journal and a Dashboard when we increase the push rate of events inserted in the Journal.
 
@@ -125,7 +122,7 @@ Using the tree structure of the business use case application presented in secti
 
 \section{Conclusion}
 
-To conclude, the performance tests meet the goals with expected latency patterns (the end-to-end event latency is constant before a push rate threshold from where the dashboards are forced to be late in the stream, but they can reduce their lateness if the push rate decreases after a period of high push rate). Moreover, resource consumption does not increase to much with the push rate. Furthermore, the fault-tolerance behavior of processors follows the expected patterns with a lower recovery time for processor that have a persistent parent.
+To conclude, the performance tests meet the goals with expected latency patterns (the end-to-end event latency is constant until a push rate threshold, and then it increases linearly with the push rate because the dashboards start to be late in the stream, but they can reduce their lateness if the push rate decreases after a period of high push rate). Moreover, resource consumption does not increase too much with the push rate. Furthermore, the fault-tolerance behavior of processors follows the expected patterns with a lower recovery time for processor that have a persistent parent.
 Last but not least, for a push rate of 100 events per seconds (which corresponds to the common push rate for the business application), the end-to-end latency is constant at 4 ms on a local machine, which is a very good result for our use case.
 
 

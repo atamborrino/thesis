@@ -97,15 +97,15 @@ This section details the following non-functional requirements:
 \begin{itemize}
   \item Easy scale up and scale out with a share-nothing architecture.
   \item Decoupled processors that can consume the stream with heterogeneous processing speeds without affecting each other.
-  \item Optimize resource consumption in the whole system with non-blocking IO.
-  \item All the previous non-functional requirements should ensure a soft real-time property (as defined in the introduction). In a few words, for a real-world event push rate as in the business use case application, the end-to-end event processing latency should be measured in seconds (not minutes or hours).
+  \item Optimized resource consumption in the whole system with non-blocking IO.
+  \item All the previous non-functional requirements should ensure a soft real-time property (as defined in the introduction). In a few words, for a realistic event push rate as in the business use case application, the end-to-end event processing latency should be measured in seconds (not minutes or hours).
 \end{itemize}
 
 \subsection{Data Integration}
 
-The Data Integration part must be able to scale up easily as one of the goal of the platform is to potentially handle high push rates of events (real-time Big Data). Scale up means that the puller should automatically make the best possible use of all cores available on a machine in order to parallelize the various pulls. The different parts of the puller should also be easily distributable in case of the load if too big for one machine to handle. 
+The Data Integration part must be able to scale up easily as one of the goals of the platform is to potentially handle high push rates of events. Scale up means that the puller should automatically make the best possible use of all cores available on a machine in order to parallelize the various pulls. The different parts of the puller should also be easily distributable in case of the load if too big for one machine to handle. 
 
-To prevent software and/or hardware faults that may happen in every kind of IT systems, the puller should also be fault-tolerant, i.e if a component experiences a transient failure, the system should ensure that no event is duplicated or lost.
+To prevent software and/or hardware faults that can happen in every kind of IT systems, the puller should also be fault-tolerant, i.e if a component experiences a transient failure, the system should ensure that no event is duplicated or lost.
 
 Moreover, the nature of the puller implies that it will spend the majority of its time doing IO to query different data sources.
 Those IOs can have various durations depending on the size of the data to pull, the latency and bandwidth of the data sources, etc.

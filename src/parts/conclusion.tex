@@ -1,22 +1,21 @@
-\chapter{Conclusion and Future Work}
+\chapter{Conclusion and future work}
 
 \section{Conclusion}
 
 The platform meets the requirements specified in chapter 2. 
+Concerning functional requirements, the Data Integration part defines a way to perform incremental pulls of data changes from various data sources' REST APIs and to insert these data changes as events into the Journal. The Stream Processing part defines a generic architecture with a Tree-like structure of stream processors that can react to events and perform side-effects with an exactly-once semantic. In the entire platform, fault-tolerance is handled to ensure no event loss and no event duplication even in cases of transient failures of pullers and/or processors.
 
-Concerning functional requirements, the Data Integration part defines a way to perform incremental pull of data changes from various data sources' REST APIs with data cleaning, validation and insertion as events into the Journal. The Stream Processing part allows the user of the generic library to define a tree of stream processors that can react to events and perform side-effects with an exactly-once call semantic. In the entire platform, fault-tolerance is handled to ensure no event loss and no event duplication even in cases of transient failures of puller and/or processors.
-
-Concerning non-functional requirements, the Data Integration part use an actor system to provide easy scale up and scale out of data pullers. The Stream Processing part uses an adaptive push-pull model with back-pressure to allow decoupled stream processing while optimizing resource consumption. The tree of processors guarantees in-order sequential asynchronous stream processing with fault-tolerance: the temporary failure of a processor is guaranteed without message loss or duplication by allowing a processor to replay the stream from its parent (as shown and explained in section.
+Concerning non-functional requirements, the Data Integration part uses an actor system to provide easy scale up and scale out of data pullers. The Stream Processing part uses an adaptive push-pull model with back-pressure to allow decoupled stream processing while optimizing resource consumption. The tree of processors guarantees in-order sequential asynchronous stream processing with fault-tolerance: the temporary failure of a processor is guaranteed without message loss or duplication by allowing a processor to replay the stream from its parent.
 \\
 
-This thesis has presented a Reactive platform for Data Integration and Event Stream Processing. Events and Event-Sourcing are the core concepts of the platform to enable 
+To conclude, this thesis has presented a Reactive platform for Data Integration and Event Stream Processing. Events and Event-Sourcing are the core concepts of the platform to enable 
 real-time propagation of data changes across the system, from external data sources to data aggregation dashboards. Data sources are pulled in a parallel and incremental way via their REST API to create a real-time flow of events that are inserted in an event-sourced Journal. Saving not only the current state of the data but also all the data changes
 that led to this current state allows to be able to query and replay the history of the data, which can be useful for business purposes but also for technical purposes such as fault-tolerance or stream processing with subscribers that have heterogeneous processing speeds.
 From the events stored in the Journal, a tree of stream processors can be defined to subscribe to the data changes and react in various ways. An example use case of a processor is maintaining a specific data aggregation dashboard that is updated incrementally upon the reception of certain types of events in real-time. Strong technical guarantees are ensured by the platform as in-order sequential asynchronous processing with exactly-once side-effect semantic even in case of failures. Under the hood, a complex adaptive push-pull model with back-pressure is used to maximize the performance of the system and minimize the amount of resource (CPU, RAM) used. Functional programming abstractions have been used for maintainable and composable asynchronous programming.
-Performance tests have been performed on a use case business application, which validates the architecture model by showing expected performance patterns concerning event latency between the Journal (top of the processing tree) and the Dashboards (leaves of the processing tree), and expected fault-tolerance behaviours with acceptable recovery times.
+Performance tests have been performed on a use case business application, which validates the architecture model by showing expected performance patterns concerning event latency between the Journal (top of the processing tree) and the Dashboards (leaves of the processing tree), and expected fault-tolerance behaviors with acceptable recovery times.
 
 
-\section{Future Work}
+\section{Future work}
 
 Concerning Future Works that can be made on the platform, one problem is that the distributed mode is for now point-to-point oriented, i.e. we need to manually configure which component (data puller, processor) is located on which machine. To obtain elastic scalability, it would be interesting to use a cluster oriented approach with a cluster manager layer that automatically puts components on machines according to the current resource availability of each machine.
 \\
